@@ -55,7 +55,7 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 
 	var (
 		key, param, value []byte
-		freshKey          bool
+		mustCall          bool
 	)
 	for lexer.Next() {
 		var call bool
@@ -69,10 +69,11 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 			case stateKey, stateParamBeforeName:
 				key = v
 				state = stateParamBeforeName
-				freshKey = true
+				mustCall = true
 			case stateParamName:
 				param = v
 				state = stateParamBeforeValue
+				mustCall = true
 			case stateParamValue:
 				value = v
 				state = stateParamBeforeName
@@ -97,7 +98,7 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 			case isComma(v) && state == stateParamBeforeName:
 				state = stateKey
 				// Make call only if we have not called this key yet.
-				call = freshKey
+				call = mustCall
 
 			case isComma(v) && state == stateParamBeforeValue:
 				state = stateKey
@@ -128,10 +129,10 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 			}
 			param = nil
 			value = nil
-			freshKey = false
+			mustCall = false
 		}
 	}
-	if freshKey {
+	if mustCall {
 		ok = true
 		it(key, param, value)
 	}

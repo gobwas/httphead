@@ -2,8 +2,33 @@ package httphead
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
+
+func ExampleList() {
+	var values []string
+	List([]byte(`a,b,c`), func(v []byte) bool {
+		values = append(values, string(v))
+		return v[0] != 'b'
+	})
+
+	fmt.Println(values)
+	// Output: [a b]
+}
+
+func ExampleParameters() {
+	foo := map[string]string{}
+	Parameters([]byte(`foo;bar=1;baz`), func(key, param, value []byte) bool {
+		if bytes.Equal(key, []byte("foo")) {
+			foo[string(param)] = string(value)
+		}
+		return true
+	})
+
+	fmt.Println(foo)
+	// Output: map[bar:1 baz:]
+}
 
 var listCases = []struct {
 	label string
@@ -97,7 +122,7 @@ var parametersCases = []struct {
 		},
 	},
 	{
-		label: "simple_edge",
+		label: "simple",
 		in:    []byte(`a,b,c;foo=1;bar=2`),
 		ok:    true,
 		exp: []tuple{
@@ -114,6 +139,15 @@ var parametersCases = []struct {
 		exp: []tuple{
 			{key: []byte(`c`), param: []byte(`foo`)},
 			{key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+		},
+	},
+	{
+		label: "simple",
+		in:    []byte(`foo;bar=1;baz`),
+		ok:    true,
+		exp: []tuple{
+			{key: []byte(`foo`), param: []byte(`bar`), value: []byte(`1`)},
+			{key: []byte(`foo`), param: []byte(`baz`)},
 		},
 	},
 	{

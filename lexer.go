@@ -13,7 +13,7 @@ const (
 )
 
 // Scanner represents header tokens scanner.
-// See https://tools.ietf.org/html/rfc2616\#section-2
+// See https://tools.ietf.org/html/rfc2616#section-2
 type Scanner struct {
 	data []byte
 	pos  int
