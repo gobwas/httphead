@@ -8,6 +8,7 @@ import (
 
 func ExampleList() {
 	var values []string
+
 	List([]byte(`a,b,c`), func(v []byte) bool {
 		values = append(values, string(v))
 		return v[0] != 'b'
@@ -19,10 +20,9 @@ func ExampleList() {
 
 func ExampleParameters() {
 	foo := map[string]string{}
+
 	Parameters([]byte(`foo;bar=1;baz`), func(key, param, value []byte) bool {
-		if bytes.Equal(key, []byte("foo")) {
-			foo[string(param)] = string(value)
-		}
+		foo[string(param)] = string(value)
 		return true
 	})
 
