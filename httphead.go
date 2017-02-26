@@ -5,17 +5,24 @@
 // constructions, described here https://tools.ietf.org/html/rfc2616#section-2
 package httphead
 
-func HeaderList(data []byte, it func([]byte) bool) bool {
-	lexer := &lexer{data: data}
+// List parses data in this form:
+//
+// list = 1#token
+//
+// It returns false if data is malformed.
+func List(data []byte, it func([]byte) bool) bool {
+	lexer := &Scanner{data: data}
 
-	for lexer.next() {
-		switch lexer.itemType {
-		case itemToken, itemString:
-			if !it(lexer.itemBytes) {
+	var ok bool
+	for lexer.Next() {
+		switch lexer.Type() {
+		case ItemToken:
+			ok = true
+			if !it(lexer.Bytes()) {
 				return true
 			}
-		case itemSeparator:
-			if len(lexer.itemBytes) != 1 || lexer.itemBytes[0] != ',' {
+		case ItemSeparator:
+			if !isComma(lexer.Bytes()) {
 				return false
 			}
 		default:
@@ -23,8 +30,137 @@ func HeaderList(data []byte, it func([]byte) bool) bool {
 		}
 	}
 
-	if lexer.err {
-		panic("error")
+	return ok && !lexer.err
+}
+
+// Parameters parses data like this form:
+//
+// values = 1#value
+// value = token *( ";" param )
+// param = token [ "=" (token | quoted-string) ]
+//
+// It returns false if data is malformed.
+func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
+	lexer := &Scanner{data: data}
+
+	var ok bool
+	var state int
+	const (
+		stateKey = iota
+		stateParamBeforeName
+		stateParamName
+		stateParamBeforeValue
+		stateParamValue
+	)
+
+	var (
+		key, param, value []byte
+		freshKey          bool
+	)
+	for lexer.Next() {
+		var call bool
+
+		t := lexer.Type()
+		v := lexer.Bytes()
+
+		switch t {
+		case ItemToken:
+			switch state {
+			case stateKey, stateParamBeforeName:
+				key = v
+				state = stateParamBeforeName
+				freshKey = true
+			case stateParamName:
+				param = v
+				state = stateParamBeforeValue
+			case stateParamValue:
+				value = v
+				state = stateParamBeforeName
+				call = true
+			default:
+				return false
+			}
+
+		case ItemString:
+			if state != stateParamValue {
+				return false
+			}
+			value = v
+			state = stateParamBeforeName
+			call = true
+
+		case ItemSeparator:
+			switch {
+			case isComma(v) && state == stateKey:
+				// do nothing
+
+			case isComma(v) && state == stateParamBeforeName:
+				state = stateKey
+				// Make call only if we have not called this key yet.
+				call = freshKey
+
+			case isComma(v) && state == stateParamBeforeValue:
+				state = stateKey
+				call = true
+
+			case isSemicolon(v) && state == stateParamBeforeName:
+				state = stateParamName
+
+			case isSemicolon(v) && state == stateParamBeforeValue:
+				state = stateParamName
+				call = true
+
+			case isEquality(v) && state == stateParamBeforeValue:
+				state = stateParamValue
+
+			default:
+				return false
+			}
+
+		default:
+			return false
+		}
+
+		if call {
+			ok = true
+			if !it(key, param, value) {
+				return true
+			}
+			param = nil
+			value = nil
+			freshKey = false
+		}
 	}
-	return true
+	if freshKey {
+		ok = true
+		it(key, param, value)
+	}
+
+	return ok && !lexer.err
+}
+
+// Tokens scans all tokens independently of grammar and calls it for every
+// instance. When it returns false it stops iteration.
+//
+// It returns false only if error occured on scanning data.
+func Tokens(data []byte, it func([]byte) bool) bool {
+	lexer := &Scanner{data: data}
+
+	for lexer.Next() {
+		if lexer.Type() == ItemToken && !it(lexer.Bytes()) {
+			return true
+		}
+	}
+
+	return !lexer.err
+}
+
+func isComma(b []byte) bool {
+	return len(b) == 1 && b[0] == ','
+}
+func isSemicolon(b []byte) bool {
+	return len(b) == 1 && b[0] == ';'
+}
+func isEquality(b []byte) bool {
+	return len(b) == 1 && b[0] == '='
 }

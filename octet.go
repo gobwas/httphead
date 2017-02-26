@@ -1,6 +1,6 @@
 package httphead
 
-// octetType desribes character type.
+// OctetType desribes character type.
 //
 // From the "Basic Rules" chapter of RFC2616
 // See https://tools.ietf.org/html/rfc2616#section-2.2
@@ -30,27 +30,27 @@ package httphead
 // | "," | ";" | ":" | "\" | <">
 // | "/" | "[" | "]" | "?" | "="
 // | "{" | "}" | SP | HT
-type octetType byte
+type OctetType byte
 
-func (t octetType) isChar() bool      { return t&octetChar != 0 }
-func (t octetType) isControl() bool   { return t&octetControl != 0 }
-func (t octetType) isSeparator() bool { return t&octetSeparator != 0 }
-func (t octetType) isSpace() bool     { return t&octetSpace != 0 }
-func (t octetType) isToken() bool     { return t&octetToken != 0 }
+func (t OctetType) IsChar() bool      { return t&octetChar != 0 }
+func (t OctetType) IsControl() bool   { return t&octetControl != 0 }
+func (t OctetType) IsSeparator() bool { return t&octetSeparator != 0 }
+func (t OctetType) IsSpace() bool     { return t&octetSpace != 0 }
+func (t OctetType) IsToken() bool     { return t&octetToken != 0 }
 
 const (
-	octetChar octetType = 1 << iota
+	octetChar OctetType = 1 << iota
 	octetControl
 	octetSpace
 	octetSeparator
 	octetToken
 )
 
-var octetTypes [256]octetType
+var OctetTypes [256]OctetType
 
 func init() {
 	for c := 32; c < 256; c++ {
-		var t octetType
+		var t OctetType
 		if c <= 127 {
 			t |= octetChar
 		}
@@ -64,10 +64,10 @@ func init() {
 			t |= octetSpace | octetSeparator
 		}
 
-		if t.isChar() && !t.isControl() && !t.isSeparator() && !t.isSpace() {
+		if t.IsChar() && !t.IsControl() && !t.IsSeparator() && !t.IsSpace() {
 			t |= octetToken
 		}
 
-		octetTypes[c] = t
+		OctetTypes[c] = t
 	}
 }

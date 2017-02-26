@@ -2,27 +2,35 @@ package httphead
 
 import "bytes"
 
-type itemType int
+type ItemType int
 
 const (
-	itemUndef itemType = iota
-	itemToken
-	itemSeparator
-	itemString
-	itemComment
+	ItemUndef ItemType = iota
+	ItemToken
+	ItemSeparator
+	ItemString
+	ItemComment
 )
 
-type lexer struct {
+// Scanner represents header tokens scanner.
+// See https://tools.ietf.org/html/rfc2616\#section-2
+type Scanner struct {
 	data []byte
 	pos  int
 
-	itemType  itemType
+	itemType  ItemType
 	itemBytes []byte
 
 	err bool
 }
 
-func (l *lexer) next() bool {
+func NewScanner(data []byte) *Scanner {
+	return &Scanner{data: data}
+}
+
+// Next scans for next token. It returns true on successful scanning, and false
+// on error or EOF.
+func (l *Scanner) Next() bool {
 	if l.err {
 		return false
 	}
@@ -34,10 +42,10 @@ func (l *lexer) next() bool {
 
 	switch l.data[l.pos] {
 	case '"': // quoted-string;
-		return l.readString()
+		return l.fetchQuotedString()
 
 	case '(': // comment;
-		return l.readComment()
+		return l.fetchComment()
 
 	case '\\', ')': // unexpected chars;
 		l.err = true
@@ -48,7 +56,15 @@ func (l *lexer) next() bool {
 	}
 }
 
-func (l *lexer) readToken() bool {
+func (l *Scanner) Type() ItemType {
+	return l.itemType
+}
+
+func (l *Scanner) Bytes() []byte {
+	return l.itemBytes
+}
+
+func (l *Scanner) readToken() bool {
 	n, t := fetchToken(l.data[l.pos:])
 	if n == -1 {
 		l.err = true
@@ -56,52 +72,53 @@ func (l *lexer) readToken() bool {
 	}
 
 	l.itemType = t
-	l.itemBytes = l.data[l.pos:n]
+	l.itemBytes = l.data[l.pos : l.pos+n]
 	l.pos += n
 
 	return true
 }
 
-func (l *lexer) readString() (ok bool) {
+func (l *Scanner) fetchQuotedString() (ok bool) {
 	l.pos++
 
-	n := readUntil(l.data[l.pos:], '"')
+	n := ScanUntil(l.data[l.pos:], '"')
 	if n == -1 {
 		l.err = true
 		return false
 	}
 
-	l.itemType = itemString
-	l.itemBytes = removeBackslash(l.data[l.pos : l.pos+n])
-	l.pos += n
+	l.itemType = ItemString
+	l.itemBytes = RemoveByte(l.data[l.pos:l.pos+n], '\\')
+	l.pos += n + 1
 
 	return true
 }
 
-func (l *lexer) readComment() (ok bool) {
+func (l *Scanner) fetchComment() (ok bool) {
 	l.pos++
 
-	n := readUntilGreedy(l.data[l.pos:], '(', ')')
+	n := ScanPairGreedy(l.data[l.pos:], '(', ')')
 	if n == -1 {
 		l.err = true
 		return false
 	}
 
-	l.itemType = itemComment
-	l.itemBytes = removeBackslash(l.data[l.pos : l.pos+n])
-	l.pos += n
+	l.itemType = ItemComment
+	l.itemBytes = RemoveByte(l.data[l.pos:l.pos+n], '\\')
+	l.pos += n + 1
 
 	return true
 }
 
-func readUntil(data []byte, c byte) (n int) {
+// ScanUntil scans for first non-escaped character c in given data.
+// It returns index of matched c and -1 if c is not found.
+func ScanUntil(data []byte, c byte) (n int) {
 	for {
 		i := bytes.IndexByte(data[n:], c)
 		if i == -1 {
 			return -1
 		}
 		n += i
-		// If found index is not escaped then it is the end.
 		if n == 0 || data[n-1] != '\\' {
 			break
 		}
@@ -110,7 +127,9 @@ func readUntil(data []byte, c byte) (n int) {
 	return
 }
 
-func readUntilGreedy(data []byte, open, close byte) (n int) {
+// ScanPairGreedy scans for complete pair of opening and closing chars in greedy manner.
+// Note that first opening byte must not be present in data.
+func ScanPairGreedy(data []byte, open, close byte) (n int) {
 	var m int
 	opened := 1
 	for {
@@ -143,35 +162,33 @@ func readUntilGreedy(data []byte, open, close byte) (n int) {
 	return
 }
 
-func removeBackslash(data []byte) []byte {
-	// Next search for backslash characters. If no such chars, then set token
-	// bytes as slice of data, avoiding copying and allocations.
-	j := bytes.IndexByte(data, '\\')
+// RemoveByte returns data without c. If c is not present in data it returns
+// the same slice. If not, it copies data without c.
+func RemoveByte(data []byte, c byte) []byte {
+	j := bytes.IndexByte(data, c)
 	if j == -1 {
 		return data
 	}
 
 	n := len(data) - 1
 
-	// If backslashes are present, than allocate slice with n-1 capacity and j
-	// length for token. That is, token could be at most n-1 bytes (n minus at
-	// least one backslash). Then we copy j bytes which are before first
-	// backslash.
-	token := make([]byte, n)
-	k := copy(token, data[:j])
+	// If character is present, than allocate slice with n-1 capacity. That is,
+	// resulting bytes could be at most n-1 length.
+	result := make([]byte, n)
+	k := copy(result, data[:j])
 
 	for i := j + 1; i < n; {
-		j = bytes.IndexByte(data[i:], '\\')
+		j = bytes.IndexByte(data[i:], c)
 		if j != -1 {
-			k += copy(token[k:], data[i:i+j])
+			k += copy(result[k:], data[i:i+j])
 			i = i + j + 1
 		} else {
-			k += copy(token[k:], data[i:])
+			k += copy(result[k:], data[i:])
 			break
 		}
 	}
 
-	return token[:k]
+	return result[:k]
 }
 
 // skipSpace skips spaces and lws-sequences from p.
@@ -182,10 +199,10 @@ func skipSpace(p []byte) (n int) {
 		case len(p) >= 3 &&
 			p[0] == '\r' &&
 			p[1] == '\n' &&
-			octetTypes[p[2]].isSpace():
+			OctetTypes[p[2]].IsSpace():
 			p = p[3:]
 			n += 3
-		case octetTypes[p[0]].isSpace():
+		case OctetTypes[p[0]].IsSpace():
 			p = p[1:]
 			n += 1
 		default:
@@ -197,27 +214,27 @@ func skipSpace(p []byte) (n int) {
 
 // fetchToken fetches token from p. It returns starting position and length of
 // the token. P must be trimmed left from whitespace.
-func fetchToken(p []byte) (n int, t itemType) {
+func fetchToken(p []byte) (n int, t ItemType) {
 	if len(p) == 0 {
-		return 0, itemUndef
+		return 0, ItemUndef
 	}
 
 	c := p[0]
 	switch {
-	case octetTypes[c].isSeparator():
-		return 1, itemSeparator
+	case OctetTypes[c].IsSeparator():
+		return 1, ItemSeparator
 
-	case octetTypes[c].isToken():
-		for n := 1; n < len(p); n++ {
+	case OctetTypes[c].IsToken():
+		for n = 1; n < len(p); n++ {
 			c := p[n]
-			if !octetTypes[c].isToken() {
+			if !OctetTypes[c].IsToken() {
 				break
 			}
 		}
-		return n + 1, itemToken
+		return n, ItemToken
 
 	default:
-		return -1, itemUndef
+		return -1, ItemUndef
 	}
 }
 
