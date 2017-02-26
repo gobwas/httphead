@@ -5,14 +5,14 @@ import (
 	"testing"
 )
 
-type quotedStringCase struct {
+type readCase struct {
 	label string
 	in    []byte
 	out   []byte
 	err   bool
 }
 
-var quotedStringCases = []quotedStringCase{
+var quotedStringCases = []readCase{
 	{
 		label: "nonterm",
 		in:    []byte(`"`),
@@ -41,18 +41,69 @@ var quotedStringCases = []quotedStringCase{
 	},
 }
 
-func TestLexerReadString(t *testing.T) {
-	for _, test := range quotedStringCases {
-		t.Run(test.label, func(t *testing.T) {
-			l := &lexer{data: []byte(test.in)}
-			if ok := l.readString(); ok != !test.err {
-				t.Errorf("l.ReadString() = %v; want %v", ok, !test.err)
-				return
-			}
-			if !bytes.Equal(test.out, l.token) {
-				t.Errorf("l.ReadString() = %s; want %s", string(l.token), string(test.out))
-			}
-		})
+var commentCases = []readCase{
+	{
+		label: "nonterm",
+		in:    []byte(`(hello`),
+		out:   []byte(``),
+		err:   true,
+	},
+	{
+		label: "empty",
+		in:    []byte(`()`),
+		out:   []byte(``),
+	},
+	{
+		label: "simple",
+		in:    []byte(`(hello)`),
+		out:   []byte(`hello`),
+	},
+	{
+		label: "quoted",
+		in:    []byte(`(hello\)\(world)`),
+		out:   []byte(`hello)(world`),
+	},
+	{
+		label: "nested",
+		in:    []byte(`(hello(world))`),
+		out:   []byte(`hello(world)`),
+	},
+}
+
+type readTest struct {
+	label string
+	cases []readCase
+	fn    func(*lexer) bool
+}
+
+var readTests = []readTest{
+	{
+		"ReadString",
+		quotedStringCases,
+		(*lexer).readString,
+	},
+	{
+		"ReadComment",
+		commentCases,
+		(*lexer).readComment,
+	},
+}
+
+func TestLexerRead(t *testing.T) {
+	for _, bunch := range readTests {
+		for _, test := range bunch.cases {
+			t.Run(bunch.label+" "+test.label, func(t *testing.T) {
+				l := &lexer{data: []byte(test.in)}
+				if ok := bunch.fn(l); ok != !test.err {
+					t.Errorf("l.%s() = %v; want %v", bunch.label, ok, !test.err)
+					return
+				}
+				if !bytes.Equal(test.out, l.itemBytes) {
+					t.Errorf("l.%s() = %s; want %s", bunch.label, string(l.itemBytes), string(test.out))
+				}
+			})
+		}
+
 	}
 }
 
@@ -62,6 +113,17 @@ func BenchmarkLexerReadString(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				l := &lexer{data: []byte(bench.in)}
 				_ = l.readString()
+			}
+		})
+	}
+}
+
+func BenchmarkLexerReadComment(b *testing.B) {
+	for _, bench := range commentCases {
+		b.Run(bench.label, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				l := &lexer{data: []byte(bench.in)}
+				_ = l.readComment()
 			}
 		})
 	}
