@@ -140,22 +140,6 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 	return ok && !lexer.err
 }
 
-// Tokens scans all tokens independently of grammar and calls it for every
-// instance. When it returns false it stops iteration.
-//
-// It returns false only if error occured on scanning data.
-func Tokens(data []byte, it func([]byte) bool) bool {
-	lexer := &Scanner{data: data}
-
-	for lexer.Next() {
-		if lexer.Type() == ItemToken && !it(lexer.Bytes()) {
-			return true
-		}
-	}
-
-	return !lexer.err
-}
-
 func isComma(b []byte) bool {
 	return len(b) == 1 && b[0] == ','
 }
