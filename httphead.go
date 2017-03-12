@@ -47,6 +47,18 @@ const (
 // value = token *( ";" param )
 // param = token [ "=" (token | quoted-string) ]
 //
+// It calls given callback with the index of the key and param-value pair for
+// that key. That is, index is useful when header contains multiple choises for
+// the same key.
+//
+// Given callback should return one of the defined Control* values.
+// ControlSkip means that passed key is not in caller's interest. That is, all
+// parameters of that key will be skipped.
+// ControlBreak means that no more keys and parameters should be parsed. That
+// is, it must break parsing immediately.
+// ControlContinue means that caller want to receive next parameter and its
+// value or the next key.
+//
 // It returns false if data is malformed.
 func Parameters(data []byte, it func(index int, key, param, value []byte) Control) bool {
 	lexer := &Scanner{data: data}
