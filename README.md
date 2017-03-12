@@ -7,7 +7,7 @@
 ## Install
 
 ```shell
-    go get github.com/gobwas/glob
+    go get github.com/gobwas/httphead
 ```
 
 ## Example
@@ -35,7 +35,7 @@ The example below shows how multiple-choise HTTP header value could be parsed wi
 	// Output: [[{foo bar} {baz }] [{baz }]]
 ```
 
-For more usage examples please see [docs](godoc-url) or package tests.
+For more usage examples please see [docs][godoc-url] or package tests.
 
 [godoc-image]: https://godoc.org/github.com/gobwas/httphead?status.svg
 [godoc-url]: https://godoc.org/github.com/gobwas/httphead
