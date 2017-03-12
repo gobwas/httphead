@@ -5,6 +5,31 @@ import (
 	"testing"
 )
 
+func TestScannerSkip(t *testing.T) {
+	for _, test := range []struct {
+		in  []byte
+		c   byte
+		pos int
+	}{
+		{
+			in:  []byte(`foo,bar`),
+			c:   ',',
+			pos: 4,
+		},
+		{
+			in:  []byte(`foo\,bar,baz`),
+			c:   ',',
+			pos: 9,
+		},
+	} {
+		s := NewScanner(test.in)
+		s.Skip(test.c)
+		if act, exp := s.pos, test.pos; act != exp {
+			t.Errorf("unexpected scanner pos: %v; want %v", act, exp)
+		}
+	}
+}
+
 type readCase struct {
 	label string
 	in    []byte
@@ -89,7 +114,7 @@ var readTests = []readTest{
 	},
 }
 
-func TestLexerRead(t *testing.T) {
+func TestScannerRead(t *testing.T) {
 	for _, bunch := range readTests {
 		for _, test := range bunch.cases {
 			t.Run(bunch.label+" "+test.label, func(t *testing.T) {
@@ -107,7 +132,7 @@ func TestLexerRead(t *testing.T) {
 	}
 }
 
-func BenchmarkLexerReadString(b *testing.B) {
+func BenchmarkScannerReadString(b *testing.B) {
 	for _, bench := range quotedStringCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
@@ -118,7 +143,7 @@ func BenchmarkLexerReadString(b *testing.B) {
 	}
 }
 
-func BenchmarkLexerReadComment(b *testing.B) {
+func BenchmarkScannerReadComment(b *testing.B) {
 	for _, bench := range commentCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {

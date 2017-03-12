@@ -56,6 +56,24 @@ func (l *Scanner) Next() bool {
 	}
 }
 
+func (l *Scanner) Skip(c byte) {
+	if l.err {
+		return
+	}
+
+	// Reset scanner state.
+	l.itemType = ItemUndef
+	l.itemBytes = nil
+
+	if i := ScanUntil(l.data[l.pos:], c); i == -1 {
+		// Reached the end of data.
+		l.pos = len(l.data)
+	} else {
+		// Seek data to the next index after first matched char.
+		l.pos += i + 1
+	}
+}
+
 func (l *Scanner) Type() ItemType {
 	return l.itemType
 }

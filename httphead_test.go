@@ -21,13 +21,34 @@ func ExampleList() {
 func ExampleParameters() {
 	foo := map[string]string{}
 
-	Parameters([]byte(`foo;bar=1;baz`), func(key, param, value []byte) bool {
+	Parameters([]byte(`foo;bar=1;baz`), func(index int, key, param, value []byte) Control {
 		foo[string(param)] = string(value)
-		return true
+		return ControlContinue
 	})
 
-	fmt.Println(foo)
-	// Output: map[bar:1 baz:]
+	fmt.Printf("bar:%s baz:%s", foo["bar"], foo["baz"])
+	// Output: bar:1 baz:
+}
+
+func ExampleParametersChoise() {
+	type pair struct {
+		Key, Value string
+	}
+
+	// The right part of full header line like:
+	//
+	// X-My-Header: key;foo=bar;baz,key;baz
+	//
+	header := []byte(`key;foo=bar;baz,key;baz`)
+
+	choises := make([][]pair, 2)
+	Parameters(header, func(i int, key, param, value []byte) Control {
+		choises[i] = append(choises[i], pair{string(param), string(value)})
+		return ControlContinue
+	})
+
+	fmt.Println(choises)
+	// Output: [[{foo bar} {baz }] [{baz }]]
 }
 
 var listCases = []struct {
@@ -102,6 +123,7 @@ func BenchmarkList(b *testing.B) {
 }
 
 type tuple struct {
+	index             int
 	key, param, value []byte
 }
 
@@ -116,9 +138,9 @@ var parametersCases = []struct {
 		in:    []byte(`a,b,c`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`a`)},
-			{key: []byte(`b`)},
-			{key: []byte(`c`)},
+			{index: 0, key: []byte(`a`)},
+			{index: 1, key: []byte(`b`)},
+			{index: 2, key: []byte(`c`)},
 		},
 	},
 	{
@@ -126,10 +148,10 @@ var parametersCases = []struct {
 		in:    []byte(`a,b,c;foo=1;bar=2`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`a`)},
-			{key: []byte(`b`)},
-			{key: []byte(`c`), param: []byte(`foo`), value: []byte(`1`)},
-			{key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, key: []byte(`a`)},
+			{index: 1, key: []byte(`b`)},
+			{index: 2, key: []byte(`c`), param: []byte(`foo`), value: []byte(`1`)},
+			{index: 2, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -137,8 +159,8 @@ var parametersCases = []struct {
 		in:    []byte(`c;foo;bar=2`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`c`), param: []byte(`foo`)},
-			{key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, key: []byte(`c`), param: []byte(`foo`)},
+			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -146,8 +168,8 @@ var parametersCases = []struct {
 		in:    []byte(`foo;bar=1;baz`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`foo`), param: []byte(`bar`), value: []byte(`1`)},
-			{key: []byte(`foo`), param: []byte(`baz`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`bar`), value: []byte(`1`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`baz`)},
 		},
 	},
 	{
@@ -155,7 +177,16 @@ var parametersCases = []struct {
 		in:    []byte(`c;bar="2"`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+		},
+	},
+	{
+		label: "simple_dup",
+		in:    []byte(`c;bar=1,c;bar=2`),
+		ok:    true,
+		exp: []tuple{
+			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`1`)},
+			{index: 1, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -163,11 +194,11 @@ var parametersCases = []struct {
 		in:    []byte(`foo;a=1;b=2;c=3,bar;z,baz`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
-			{key: []byte(`foo`), param: []byte(`b`), value: []byte(`2`)},
-			{key: []byte(`foo`), param: []byte(`c`), value: []byte(`3`)},
-			{key: []byte(`bar`), param: []byte(`z`)},
-			{key: []byte(`baz`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`b`), value: []byte(`2`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`c`), value: []byte(`3`)},
+			{index: 1, key: []byte(`bar`), param: []byte(`z`)},
+			{index: 2, key: []byte(`baz`)},
 		},
 	},
 	{
@@ -175,8 +206,8 @@ var parametersCases = []struct {
 		in:    []byte(`foo;a=1,, , ,bar;b=2`),
 		ok:    true,
 		exp: []tuple{
-			{key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
-			{key: []byte(`bar`), param: []byte(`b`), value: []byte(`2`)},
+			{index: 0, key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
+			{index: 1, key: []byte(`bar`), param: []byte(`b`), value: []byte(`2`)},
 		},
 	},
 }
@@ -186,9 +217,9 @@ func TestParameters(t *testing.T) {
 		t.Run(test.label, func(t *testing.T) {
 			var act []tuple
 
-			ok := Parameters(test.in, func(key, param, value []byte) bool {
-				act = append(act, tuple{key, param, value})
-				return true
+			ok := Parameters(test.in, func(index int, key, param, value []byte) Control {
+				act = append(act, tuple{index, key, param, value})
+				return ControlContinue
 			})
 
 			if ok != test.ok {
@@ -202,10 +233,12 @@ func TestParameters(t *testing.T) {
 			for i, e := range test.exp {
 				a := act[i]
 
-				if !bytes.Equal(a.key, e.key) || !bytes.Equal(a.param, e.param) || !bytes.Equal(a.value, e.value) {
+				if a.index != e.index || !bytes.Equal(a.key, e.key) || !bytes.Equal(a.param, e.param) || !bytes.Equal(a.value, e.value) {
 					t.Errorf(
-						"unexpected %d-th tuple: %#q[%#q = %#q]; want %#q[%#q = %#q]",
-						i, string(a.key), string(a.param), string(a.value), string(e.key), string(e.param), string(e.value),
+						"unexpected %d-th tuple: #%d %#q[%#q = %#q]; want #%d %#q[%#q = %#q]",
+						i,
+						a.index, string(a.key), string(a.param), string(a.value),
+						e.index, string(e.key), string(e.param), string(e.value),
 					)
 				}
 			}
@@ -217,7 +250,7 @@ func BenchmarkParameters(b *testing.B) {
 	for _, bench := range parametersCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = Parameters(bench.in, func(_, _, _ []byte) bool { return true })
+				_ = Parameters(bench.in, func(_ int, _, _, _ []byte) Control { return ControlContinue })
 			}
 		})
 	}

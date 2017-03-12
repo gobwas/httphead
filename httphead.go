@@ -33,6 +33,14 @@ func List(data []byte, it func([]byte) bool) bool {
 	return ok && !lexer.err
 }
 
+type Control byte
+
+const (
+	ControlContinue Control = iota
+	ControlBreak
+	ControlSkip
+)
+
 // Parameters parses data like this form:
 //
 // values = 1#value
@@ -40,7 +48,7 @@ func List(data []byte, it func([]byte) bool) bool {
 // param = token [ "=" (token | quoted-string) ]
 //
 // It returns false if data is malformed.
-func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
+func Parameters(data []byte, it func(index int, key, param, value []byte) Control) bool {
 	lexer := &Scanner{data: data}
 
 	var ok bool
@@ -54,11 +62,15 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 	)
 
 	var (
+		index             int
 		key, param, value []byte
 		mustCall          bool
 	)
 	for lexer.Next() {
-		var call bool
+		var (
+			call      bool
+			growIndex int
+		)
 
 		t := lexer.Type()
 		v := lexer.Bytes()
@@ -93,15 +105,24 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 		case ItemSeparator:
 			switch {
 			case isComma(v) && state == stateKey:
-				// do nothing
+				// Nothing to do.
 
 			case isComma(v) && state == stateParamBeforeName:
 				state = stateKey
 				// Make call only if we have not called this key yet.
 				call = mustCall
+				if !call {
+					// If we have already called callback with the key
+					// that just ended.
+					index++
+				} else {
+					// Else grow the index after calling callback.
+					growIndex = 1
+				}
 
 			case isComma(v) && state == stateParamBeforeValue:
 				state = stateKey
+				growIndex = 1
 				call = true
 
 			case isSemicolon(v) && state == stateParamBeforeName:
@@ -123,18 +144,32 @@ func Parameters(data []byte, it func(key, param, value []byte) bool) bool {
 		}
 
 		if call {
-			ok = true
-			if !it(key, param, value) {
+			switch it(index, key, param, value) {
+			case ControlBreak:
+				// User want to stop to parsing parameters.
 				return true
+
+			case ControlSkip:
+				// User want to skip current param.
+				lexer.Skip(',')
+
+			case ControlContinue:
+				// User is interested in rest of parameters.
+				// Nothing to do.
+
+			default:
+				panic("unexpected control value")
 			}
+			ok = true
 			param = nil
 			value = nil
 			mustCall = false
+			index += growIndex
 		}
 	}
 	if mustCall {
 		ok = true
-		it(key, param, value)
+		it(index, key, param, value)
 	}
 
 	return ok && !lexer.err
