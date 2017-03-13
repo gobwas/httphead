@@ -5,12 +5,12 @@
 // constructions, described here https://tools.ietf.org/html/rfc2616#section-2
 package httphead
 
-// List parses data in this form:
+// ScanTokens parses data in this form:
 //
 // list = 1#token
 //
 // It returns false if data is malformed.
-func List(data []byte, it func([]byte) bool) bool {
+func ScanTokens(data []byte, it func([]byte) bool) bool {
 	lexer := &Scanner{data: data}
 
 	var ok bool
@@ -41,15 +41,36 @@ const (
 	ControlSkip
 )
 
-// Parameters parses data like this form:
+type Option struct {
+	Name       string
+	Parameters map[string]string
+}
+
+func ParseOptions(data []byte, options []Option) ([]Option, bool) {
+	var opt Option
+	index := -1
+	return options, ScanOptions(data, func(i int, name, attr, val []byte) Control {
+		if i != index {
+			opt = Option{string(name), make(map[string]string)}
+			index = i
+			options = append(options, opt)
+		}
+		if attr != nil {
+			opt.Parameters[string(attr)] = string(val)
+		}
+		return ControlContinue
+	})
+}
+
+// ScanOptions parses data in this form:
 //
 // values = 1#value
 // value = token *( ";" param )
 // param = token [ "=" (token | quoted-string) ]
 //
-// It calls given callback with the index of the key and param-value pair for
-// that key. That is, index is useful when header contains multiple choises for
-// the same key.
+// It calls given callback with the index of the option, option itself and its
+// parameter (attribute and its value, both could be nil). Index is useful when
+// header contains multiple choises for the same named option.
 //
 // Given callback should return one of the defined Control* values.
 // ControlSkip means that passed key is not in caller's interest. That is, all
@@ -60,7 +81,7 @@ const (
 // value or the next key.
 //
 // It returns false if data is malformed.
-func Parameters(data []byte, it func(index int, key, param, value []byte) Control) bool {
+func ScanOptions(data []byte, it func(index int, option, attribute, value []byte) Control) bool {
 	lexer := &Scanner{data: data}
 
 	var ok bool

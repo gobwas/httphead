@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-func ExampleList() {
+func ExampleScanTokens() {
 	var values []string
 
-	List([]byte(`a,b,c`), func(v []byte) bool {
+	ScanTokens([]byte(`a,b,c`), func(v []byte) bool {
 		values = append(values, string(v))
 		return v[0] != 'b'
 	})
@@ -18,10 +18,10 @@ func ExampleList() {
 	// Output: [a b]
 }
 
-func ExampleParameters() {
+func ExampleScanOptions() {
 	foo := map[string]string{}
 
-	Parameters([]byte(`foo;bar=1;baz`), func(index int, key, param, value []byte) Control {
+	ScanOptions([]byte(`foo;bar=1;baz`), func(index int, key, param, value []byte) Control {
 		foo[string(param)] = string(value)
 		return ControlContinue
 	})
@@ -30,7 +30,7 @@ func ExampleParameters() {
 	// Output: bar:1 baz:
 }
 
-func ExampleParametersChoise() {
+func ExampleScanOptionsChoise() {
 	type pair struct {
 		Key, Value string
 	}
@@ -42,13 +42,19 @@ func ExampleParametersChoise() {
 	header := []byte(`key;foo=bar;baz,key;baz`)
 
 	choises := make([][]pair, 2)
-	Parameters(header, func(i int, key, param, value []byte) Control {
+	ScanOptions(header, func(i int, key, param, value []byte) Control {
 		choises[i] = append(choises[i], pair{string(param), string(value)})
 		return ControlContinue
 	})
 
 	fmt.Println(choises)
 	// Output: [[{foo bar} {baz }] [{baz }]]
+}
+
+func ExampleParseOptions() {
+	options, ok := ParseOptions([]byte(`foo;bar=1;baz`), nil)
+	fmt.Println(options, ok)
+	// Output: []
 }
 
 var listCases = []struct {
@@ -88,11 +94,11 @@ var listCases = []struct {
 	},
 }
 
-func TestList(t *testing.T) {
+func TestScanTokens(t *testing.T) {
 	for _, test := range listCases {
 		t.Run(test.label, func(t *testing.T) {
 			var act [][]byte
-			ok := List(test.in, func(v []byte) bool {
+			ok := ScanTokens(test.in, func(v []byte) bool {
 				act = append(act, v)
 				return true
 			})
@@ -112,19 +118,19 @@ func TestList(t *testing.T) {
 	}
 }
 
-func BenchmarkList(b *testing.B) {
+func BenchmarkScanTokens(b *testing.B) {
 	for _, bench := range listCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = List(bench.in, func(v []byte) bool { return true })
+				_ = ScanTokens(bench.in, func(v []byte) bool { return true })
 			}
 		})
 	}
 }
 
 type tuple struct {
-	index             int
-	key, param, value []byte
+	index                    int
+	option, attribute, value []byte
 }
 
 var parametersCases = []struct {
@@ -138,9 +144,9 @@ var parametersCases = []struct {
 		in:    []byte(`a,b,c`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`a`)},
-			{index: 1, key: []byte(`b`)},
-			{index: 2, key: []byte(`c`)},
+			{index: 0, option: []byte(`a`)},
+			{index: 1, option: []byte(`b`)},
+			{index: 2, option: []byte(`c`)},
 		},
 	},
 	{
@@ -148,10 +154,10 @@ var parametersCases = []struct {
 		in:    []byte(`a,b,c;foo=1;bar=2`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`a`)},
-			{index: 1, key: []byte(`b`)},
-			{index: 2, key: []byte(`c`), param: []byte(`foo`), value: []byte(`1`)},
-			{index: 2, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, option: []byte(`a`)},
+			{index: 1, option: []byte(`b`)},
+			{index: 2, option: []byte(`c`), attribute: []byte(`foo`), value: []byte(`1`)},
+			{index: 2, option: []byte(`c`), attribute: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -159,8 +165,8 @@ var parametersCases = []struct {
 		in:    []byte(`c;foo;bar=2`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`c`), param: []byte(`foo`)},
-			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, option: []byte(`c`), attribute: []byte(`foo`)},
+			{index: 0, option: []byte(`c`), attribute: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -168,8 +174,8 @@ var parametersCases = []struct {
 		in:    []byte(`foo;bar=1;baz`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`foo`), param: []byte(`bar`), value: []byte(`1`)},
-			{index: 0, key: []byte(`foo`), param: []byte(`baz`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`bar`), value: []byte(`1`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`baz`)},
 		},
 	},
 	{
@@ -177,7 +183,7 @@ var parametersCases = []struct {
 		in:    []byte(`c;bar="2"`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, option: []byte(`c`), attribute: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -185,8 +191,8 @@ var parametersCases = []struct {
 		in:    []byte(`c;bar=1,c;bar=2`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`c`), param: []byte(`bar`), value: []byte(`1`)},
-			{index: 1, key: []byte(`c`), param: []byte(`bar`), value: []byte(`2`)},
+			{index: 0, option: []byte(`c`), attribute: []byte(`bar`), value: []byte(`1`)},
+			{index: 1, option: []byte(`c`), attribute: []byte(`bar`), value: []byte(`2`)},
 		},
 	},
 	{
@@ -194,11 +200,11 @@ var parametersCases = []struct {
 		in:    []byte(`foo;a=1;b=2;c=3,bar;z,baz`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
-			{index: 0, key: []byte(`foo`), param: []byte(`b`), value: []byte(`2`)},
-			{index: 0, key: []byte(`foo`), param: []byte(`c`), value: []byte(`3`)},
-			{index: 1, key: []byte(`bar`), param: []byte(`z`)},
-			{index: 2, key: []byte(`baz`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`a`), value: []byte(`1`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`b`), value: []byte(`2`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`c`), value: []byte(`3`)},
+			{index: 1, option: []byte(`bar`), attribute: []byte(`z`)},
+			{index: 2, option: []byte(`baz`)},
 		},
 	},
 	{
@@ -206,8 +212,8 @@ var parametersCases = []struct {
 		in:    []byte(`foo;a=1,, , ,bar;b=2`),
 		ok:    true,
 		exp: []tuple{
-			{index: 0, key: []byte(`foo`), param: []byte(`a`), value: []byte(`1`)},
-			{index: 1, key: []byte(`bar`), param: []byte(`b`), value: []byte(`2`)},
+			{index: 0, option: []byte(`foo`), attribute: []byte(`a`), value: []byte(`1`)},
+			{index: 1, option: []byte(`bar`), attribute: []byte(`b`), value: []byte(`2`)},
 		},
 	},
 }
@@ -217,7 +223,7 @@ func TestParameters(t *testing.T) {
 		t.Run(test.label, func(t *testing.T) {
 			var act []tuple
 
-			ok := Parameters(test.in, func(index int, key, param, value []byte) Control {
+			ok := ScanOptions(test.in, func(index int, key, param, value []byte) Control {
 				act = append(act, tuple{index, key, param, value})
 				return ControlContinue
 			})
@@ -233,12 +239,12 @@ func TestParameters(t *testing.T) {
 			for i, e := range test.exp {
 				a := act[i]
 
-				if a.index != e.index || !bytes.Equal(a.key, e.key) || !bytes.Equal(a.param, e.param) || !bytes.Equal(a.value, e.value) {
+				if a.index != e.index || !bytes.Equal(a.option, e.option) || !bytes.Equal(a.attribute, e.attribute) || !bytes.Equal(a.value, e.value) {
 					t.Errorf(
 						"unexpected %d-th tuple: #%d %#q[%#q = %#q]; want #%d %#q[%#q = %#q]",
 						i,
-						a.index, string(a.key), string(a.param), string(a.value),
-						e.index, string(e.key), string(e.param), string(e.value),
+						a.index, string(a.option), string(a.attribute), string(a.value),
+						e.index, string(e.option), string(e.attribute), string(e.value),
 					)
 				}
 			}
@@ -250,7 +256,7 @@ func BenchmarkParameters(b *testing.B) {
 	for _, bench := range parametersCases {
 		b.Run(bench.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_ = Parameters(bench.in, func(_ int, _, _, _ []byte) Control { return ControlContinue })
+				_ = ScanOptions(bench.in, func(_ int, _, _, _ []byte) Control { return ControlContinue })
 			}
 		})
 	}
