@@ -15,6 +15,12 @@
 The example below shows how multiple-choise HTTP header value could be parsed with this library:
 
 ```go
+	options, ok := ParseOptions([]byte(`foo;bar=1,baz`), nil)
+	fmt.Println(options, ok)
+	// Output: [{foo map[bar:1]} {baz map[]}] true
+```
+
+```go
 	type pair struct {
 		Key, Value string
 	}
@@ -26,7 +32,7 @@ The example below shows how multiple-choise HTTP header value could be parsed wi
 	header := []byte(`key;foo=bar;baz,key;baz`)
 
 	choises := make([][]pair, 2)
-	Parameters(header, func(i int, key, param, value []byte) Control {
+	ScanOptions(header, func(i int, key, param, value []byte) Control {
 		choises[i] = append(choises[i], pair{string(param), string(value)})
 		return ControlContinue
 	})
