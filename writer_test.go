@@ -3,10 +3,28 @@ package httphead
 import (
 	"bufio"
 	"bytes"
-	"reflect"
-	"strings"
+	"fmt"
 	"testing"
 )
+
+func ExampleWriteOptions() {
+	opts := []Option{
+		{"foo", map[string]string{
+			"param": "hello, world!",
+		}},
+		{"bar", nil},
+		{"b a z", nil},
+	}
+
+	buf := bytes.Buffer{}
+	bw := bufio.NewWriter(&buf)
+
+	WriteOptions(bw, opts)
+	bw.Flush()
+
+	// Output: foo;param="hello, world!",bar,"b a z"
+	fmt.Println(buf.String())
+}
 
 func TestWriteOptions(t *testing.T) {
 	for _, test := range []struct {
@@ -31,7 +49,14 @@ func TestWriteOptions(t *testing.T) {
 			options: []Option{
 				{"foo", map[string]string{"a b c": "10,2"}},
 			},
-			exp: `foo;"a\ b\ c"="10\,2"`,
+			exp: `foo;"a b c"="10,2"`,
+		},
+		{
+			options: []Option{
+				{`"foo"`, nil},
+				{`"bar"`, nil},
+			},
+			exp: `"\"foo\"","\"bar\""`,
 		},
 	} {
 		buf := bytes.Buffer{}
@@ -45,45 +70,5 @@ func TestWriteOptions(t *testing.T) {
 		if act := buf.String(); act != test.exp {
 			t.Errorf("WriteOptions = %#q; want %#q", act, test.exp)
 		}
-	}
-}
-
-func TestSanitize(t *testing.T) {
-	for _, test := range []struct {
-		in  string
-		out []byte
-	}{
-		{"hello-world", nil},
-		{"hello, world!", []byte(`"hello\,\ world!"`)},
-		{"a,b,c,d,e,f,g,h,i,j!", []byte(`"a\,b\,c\,d\,e\,f\,g\,h\,i\,j!"`)},
-		{
-			strings.Repeat(",", 7),
-			[]byte(`"` + strings.Repeat(`\,`, 7) + `"`),
-		},
-		{
-			strings.Repeat(",", 10),
-			[]byte(`"` + strings.Repeat(`\,`, 10) + `"`),
-		},
-	} {
-		t.Run(test.in, func(t *testing.T) {
-			act := sanitize(test.in)
-			if !reflect.DeepEqual(act, test.out) {
-				t.Errorf("sanitize(%#q) = %#q; want %#q", test.in, string(act), test.out)
-			}
-		})
-	}
-}
-
-func BenchmarkSanitize(b *testing.B) {
-	for _, test := range []string{
-		"hello-world",
-		"hello, world!",
-		"a,b,c,d,e,f,g,h,i,j!",
-	} {
-		b.Run(test, func(b *testing.B) {
-			for i := 0; i < b.N; i++ {
-				_ = sanitize(test)
-			}
-		})
 	}
 }
