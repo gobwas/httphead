@@ -52,9 +52,9 @@ func ExampleScanOptionsChoise() {
 }
 
 func ExampleParseOptions() {
-	options, ok := ParseOptions([]byte(`foo;bar=1;baz`), nil)
+	options, ok := ParseOptions([]byte(`foo;bar=1,baz`), nil)
 	fmt.Println(options, ok)
-	// Output: []
+	// Output: [{foo map[bar:1]} {baz map[]}] true
 }
 
 var listCases = []struct {

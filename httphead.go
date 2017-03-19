@@ -51,11 +51,15 @@ func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 	index := -1
 	return options, ScanOptions(data, func(i int, name, attr, val []byte) Control {
 		if i != index {
-			opt = Option{string(name), make(map[string]string)}
+			opt = Option{string(name), nil}
 			index = i
 			options = append(options, opt)
 		}
 		if attr != nil {
+			if opt.Parameters == nil {
+				opt.Parameters = make(map[string]string)
+				options[index] = opt
+			}
 			opt.Parameters[string(attr)] = string(val)
 		}
 		return ControlContinue
