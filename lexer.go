@@ -255,26 +255,3 @@ func fetchToken(p []byte) (n int, t ItemType) {
 		return -1, ItemUndef
 	}
 }
-
-//
-//func httpStrHeaderList(h string, it func(string) bool) bool {
-//	// TODO(gobwas): make httpStrTokenizer
-//	t := tokenizer{src: strToBytes(h)}
-//	wantMore := false
-//	for {
-//		token, sep := t.next()
-//		wantMore = sep == ','
-//		if t.err {
-//			return false
-//		}
-//		if token != nil && !it(string(token)) {
-//			return true
-//		}
-//		if t.empty() {
-//			return !wantMore
-//		}
-//		if token == nil && sep != ',' {
-//			return false
-//		}
-//	}
-//}
