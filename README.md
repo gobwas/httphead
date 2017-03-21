@@ -35,7 +35,7 @@ of some key:
 		v   = []byte(`2`)
 	)
 	var found bool
-    httphead.ScanOptions(header, func(i int, key, param, value []byte) Control {
+	httphead.ScanOptions(header, func(i int, key, param, value []byte) Control {
 		if !bytes.Equal(key, foo) {
 			return ControlSkip
 		}
