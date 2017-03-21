@@ -15,30 +15,40 @@
 The example below shows how multiple-choise HTTP header value could be parsed with this library:
 
 ```go
-	options, ok := ParseOptions([]byte(`foo;bar=1,baz`), nil)
+	options, ok := httphead.ParseOptions([]byte(`foo;bar=1,baz`), nil)
 	fmt.Println(options, ok)
 	// Output: [{foo map[bar:1]} {baz map[]}] true
 ```
 
+The low-level example below shows how to optimize keys skipping and selection
+of some key:
+
 ```go
-	type pair struct {
-		Key, Value string
-	}
-
 	// The right part of full header line like:
-	//
 	// X-My-Header: key;foo=bar;baz,key;baz
-	//
-	header := []byte(`key;foo=bar;baz,key;baz`)
+	header := []byte(`foo;a=0,foo;a=1,foo;a=2,foo;a=3`)
 
-	choises := make([][]pair, 2)
-	ScanOptions(header, func(i int, key, param, value []byte) Control {
-		choises[i] = append(choises[i], pair{string(param), string(value)})
+	// We want to search key "foo" with an "a" parameter that equal to "2".
+	var (
+		foo = []byte(`foo`)
+		a   = []byte(`a`)
+		v   = []byte(`2`)
+	)
+	var found bool
+    httphead.ScanOptions(header, func(i int, key, param, value []byte) Control {
+		if !bytes.Equal(key, foo) {
+			return ControlSkip
+		}
+		if !bytes.Equal(param, a) {
+			if bytes.Equal(value, v) {
+				// Found it!
+				found = true
+				return ControlBreak
+			}
+			return ControlSkip
+		}
 		return ControlContinue
 	})
-
-	fmt.Println(choises)
-	// Output: [[{foo bar} {baz }] [{baz }]]
 ```
 
 For more usage examples please see [docs][godoc-url] or package tests.
