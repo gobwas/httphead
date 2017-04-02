@@ -18,12 +18,12 @@ func WriteOptions(dest *bufio.Writer, options []Option) {
 
 		writeTokenSanitized(dest, opt.Name)
 
-		for key, val := range opt.Parameters {
+		for _, p := range opt.Parameters.data() {
 			dest.WriteByte(';')
-			writeTokenSanitized(dest, key)
-			if val != "" {
+			writeTokenSanitized(dest, p.key)
+			if len(p.value) != 0 {
 				dest.WriteByte('=')
-				writeTokenSanitized(dest, val)
+				writeTokenSanitized(dest, p.value)
 			}
 		}
 	}
@@ -42,11 +42,11 @@ func WriteOptions(dest *bufio.Writer, options []Option) {
 // That is we sanitizing s for writing, so there could not be any header field
 // continuation.
 // That is any CRLF will be escaped as any other control characters not allowd in TEXT.
-func writeTokenSanitized(bw *bufio.Writer, s string) {
+func writeTokenSanitized(bw *bufio.Writer, bts []byte) {
 	var qt bool
 	var pos int
-	for i := 0; i < len(s); i++ {
-		c := s[i]
+	for i := 0; i < len(bts); i++ {
+		c := bts[i]
 
 		if !OctetTypes[c].IsToken() && !qt {
 			qt = true
@@ -57,16 +57,16 @@ func writeTokenSanitized(bw *bufio.Writer, s string) {
 				qt = true
 				bw.WriteByte('"')
 			}
-			bw.WriteString(s[pos:i])
+			bw.Write(bts[pos:i])
 			bw.WriteByte('\\')
 			bw.WriteByte(c)
 			pos = i + 1
 		}
 	}
 	if !qt {
-		bw.WriteString(s)
+		bw.Write(bts)
 	} else {
-		bw.WriteString(s[pos:])
+		bw.Write(bts[pos:])
 		bw.WriteByte('"')
 	}
 }

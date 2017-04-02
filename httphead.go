@@ -42,25 +42,139 @@ const (
 )
 
 type Option struct {
-	Name       string
-	Parameters map[string]string
+	Name       []byte
+	Parameters Parameters
 }
 
+func (opt Option) Copy() Option {
+	p := make([]byte, len(opt.Name)+opt.Parameters.bytes)
+	n := copy(p, opt.Name)
+
+	opt.Name = p[:n]
+	opt.Parameters, _ = opt.Parameters.copy(p[n:])
+
+	return opt
+}
+
+func (opt Option) String() string {
+	return "{" + string(opt.Name) + " " + opt.Parameters.String() + "}"
+}
+
+func NewOption(name string, data map[string]string) Option {
+	p := Parameters{}
+	for k, v := range data {
+		p.Set([]byte(k), []byte(v))
+	}
+	return Option{
+		Name:       []byte(name),
+		Parameters: p,
+	}
+}
+
+type pair struct {
+	key, value []byte
+}
+
+func (p pair) copy(dst []byte) (pair, []byte) {
+	n := copy(dst, p.key)
+	p.key = dst[:n]
+	m := n + copy(dst[n:], p.value)
+	p.value = dst[n:m]
+
+	dst = dst[m:]
+
+	return p, dst
+}
+
+type Parameters struct {
+	pos   int
+	bytes int
+	arr   [8]pair
+	dyn   []pair
+}
+
+func (p *Parameters) copy(dst []byte) (Parameters, []byte) {
+	ret := Parameters{
+		pos:   p.pos,
+		bytes: p.bytes,
+	}
+	if p.dyn != nil {
+		ret.dyn = make([]pair, len(p.dyn))
+		for i, v := range p.dyn {
+			ret.dyn[i], dst = v.copy(dst)
+		}
+	} else {
+		for i, p := range p.arr {
+			ret.arr[i], dst = p.copy(dst)
+		}
+	}
+	return ret, dst
+}
+
+func (p *Parameters) Get(key string) (value []byte, ok bool) {
+	for _, v := range p.data() {
+		if string(v.key) == key {
+			return v.value, true
+		}
+	}
+	return nil, false
+}
+
+func (p *Parameters) Set(key, value []byte) {
+	p.bytes += len(key) + len(value)
+
+	if p.pos < len(p.arr) {
+		p.arr[p.pos] = pair{key, value}
+		p.pos++
+		return
+	}
+
+	if p.dyn == nil {
+		p.dyn = make([]pair, len(p.arr), len(p.arr)+1)
+		copy(p.dyn, p.arr[:])
+	}
+	p.dyn = append(p.dyn, pair{key, value})
+}
+
+func (p *Parameters) ForEach(cb func(k, v []byte) bool) {
+	for _, v := range p.data() {
+		if !cb(v.key, v.value) {
+			break
+		}
+	}
+}
+
+func (p *Parameters) String() (ret string) {
+	ret = "["
+	for i, v := range p.data() {
+		if i > 0 {
+			ret += " "
+		}
+		ret += string(v.key) + ":" + string(v.value)
+	}
+	return ret + "]"
+}
+
+func (p *Parameters) data() []pair {
+	if p.dyn != nil {
+		return p.dyn
+	}
+	return p.arr[:p.pos]
+}
+
+// ParseOptions parses header data and appends it to given slice of Option.
+// It also returns flag of successful (wellformed input) parsing.
 func ParseOptions(data []byte, options []Option) ([]Option, bool) {
-	var opt Option
+	var i int
 	index := -1
-	return options, ScanOptions(data, func(i int, name, attr, val []byte) Control {
-		if i != index {
-			opt = Option{string(name), nil}
-			index = i
-			options = append(options, opt)
+	return options, ScanOptions(data, func(idx int, name, attr, val []byte) Control {
+		if idx != index {
+			index = idx
+			i = len(options)
+			options = append(options, Option{Name: name})
 		}
 		if attr != nil {
-			if opt.Parameters == nil {
-				opt.Parameters = make(map[string]string)
-				options[index] = opt
-			}
-			opt.Parameters[string(attr)] = string(val)
+			options[i].Parameters.Set(attr, val)
 		}
 		return ControlContinue
 	})
