@@ -18,23 +18,25 @@ var (
 //
 // It wraps valuse into the quoted-string sequence if it contains any
 // non-token characters.
-func WriteOptions(dest io.Writer, options []Option) {
+func WriteOptions(dest io.Writer, options []Option) (n int, err error) {
+	w := &writerErrHolder{w: dest}
 	for i, opt := range options {
 		if i > 0 {
-			dest.Write(comma)
+			w.Write(comma)
 		}
 
-		writeTokenSanitized(dest, opt.Name)
+		writeTokenSanitized(w, opt.Name)
 
 		for _, p := range opt.Parameters.data() {
-			dest.Write(semicolon)
-			writeTokenSanitized(dest, p.key)
+			w.Write(semicolon)
+			writeTokenSanitized(w, p.key)
 			if len(p.value) != 0 {
-				dest.Write(equality)
-				writeTokenSanitized(dest, p.value)
+				w.Write(equality)
+				writeTokenSanitized(w, p.value)
 			}
 		}
 	}
+	return w.n, w.err
 }
 
 // writeTokenSanitized writes token as is or as quouted string if it contains
@@ -76,4 +78,21 @@ func writeTokenSanitized(bw io.Writer, bts []byte) {
 		bw.Write(bts[pos:])
 		bw.Write(quote)
 	}
+}
+
+type writerErrHolder struct {
+	w io.Writer
+
+	n   int
+	err error
+}
+
+func (w *writerErrHolder) Write(p []byte) (n int, err error) {
+	if w.err != nil {
+		return 0, w.err
+	}
+	n, err = w.w.Write(p)
+	w.err = err
+	w.n += n
+	return
 }
