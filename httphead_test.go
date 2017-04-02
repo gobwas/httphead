@@ -123,7 +123,7 @@ func TestOptionCopy(t *testing.T) {
 			opt.Parameters.Set(k, v)
 		}
 
-		cp := opt.Copy()
+		cp := opt.Copy(make([]byte, opt.Size()))
 
 		memset(opt.Name, 'x')
 		for _, p := range opt.Parameters.data() {
@@ -325,31 +325,32 @@ func BenchmarkParameters(b *testing.B) {
 }
 
 var selectOptionsCases = []struct {
-	label string
-	flags SelectFlags
-	in    []byte
-	p     []Option
-	check func(Option) bool
-	exp   []Option
-	ok    bool
+	label    string
+	selector OptionSelector
+	in       []byte
+	p        []Option
+	exp      []Option
+	ok       bool
 }{
 	{
 		label: "simple",
-		in:    []byte(`foo;a=1,foo;a=2`),
-		p:     nil,
-		flags: SelectCopy | SelectUnique,
-		check: func(opt Option) bool { return true },
+		selector: OptionSelector{
+			Flags: SelectCopy | SelectUnique,
+		},
+		in: []byte(`foo;a=1,foo;a=2`),
+		p:  nil,
 		exp: []Option{
 			NewOption("foo", map[string]string{"a": "1"}),
 		},
 		ok: true,
 	},
 	{
-		label: "simple_no_alloc",
-		in:    []byte(`foo;a=1,foo;a=2`),
-		p:     make([]Option, 0, 2),
-		flags: SelectUnique,
-		check: func(opt Option) bool { return true },
+		label: "simple",
+		selector: OptionSelector{
+			Flags: SelectUnique,
+		},
+		in: []byte(`foo;a=1,foo;a=2`),
+		p:  make([]Option, 0, 2),
 		exp: []Option{
 			NewOption("foo", map[string]string{"a": "1"}),
 		},
@@ -357,10 +358,11 @@ var selectOptionsCases = []struct {
 	},
 	{
 		label: "multiparam_stack",
-		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
-		p:     make([]Option, 0, 2),
-		flags: SelectUnique,
-		check: func(opt Option) bool { return true },
+		selector: OptionSelector{
+			Flags: SelectUnique,
+		},
+		in: []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
+		p:  make([]Option, 0, 2),
 		exp: []Option{
 			NewOption("foo", map[string]string{
 				"a": "1",
@@ -378,10 +380,11 @@ var selectOptionsCases = []struct {
 	},
 	{
 		label: "multiparam_stack",
-		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
-		p:     make([]Option, 0, 2),
-		flags: SelectUnique | SelectCopy,
-		check: func(opt Option) bool { return true },
+		selector: OptionSelector{
+			Flags: SelectCopy | SelectUnique,
+		},
+		in: []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
+		p:  make([]Option, 0, 2),
 		exp: []Option{
 			NewOption("foo", map[string]string{
 				"a": "1",
@@ -399,10 +402,11 @@ var selectOptionsCases = []struct {
 	},
 	{
 		label: "multiparam_heap",
-		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10,bar`),
-		p:     make([]Option, 0, 2),
-		flags: SelectUnique | SelectCopy,
-		check: func(opt Option) bool { return true },
+		selector: OptionSelector{
+			Flags: SelectCopy | SelectUnique,
+		},
+		in: []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10,bar`),
+		p:  make([]Option, 0, 2),
 		exp: []Option{
 			NewOption("foo", map[string]string{
 				"a": "1",
@@ -424,8 +428,8 @@ var selectOptionsCases = []struct {
 
 func TestSelectOptions(t *testing.T) {
 	for _, test := range selectOptionsCases {
-		t.Run(test.label+test.flags.String(), func(t *testing.T) {
-			act, ok := SelectOptions(test.flags, test.in, test.p, test.check)
+		t.Run(test.label+test.selector.Flags.String(), func(t *testing.T) {
+			act, ok := test.selector.Select(test.in, test.p)
 			if ok != test.ok {
 				t.Errorf("SelectOptions(%q) wellformed sign is %v; want %v", string(test.in), ok, test.ok)
 			}
@@ -438,9 +442,10 @@ func TestSelectOptions(t *testing.T) {
 
 func BenchmarkSelectOptions(b *testing.B) {
 	for _, test := range selectOptionsCases {
-		b.Run(test.label+test.flags.String(), func(b *testing.B) {
+		s := test.selector
+		b.Run(test.label+s.Flags.String(), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				_, _ = SelectOptions(test.flags, test.in, test.p, test.check)
+				_, _ = s.Select(test.in, test.p)
 			}
 		})
 	}

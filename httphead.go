@@ -51,13 +51,17 @@ type Option struct {
 	Parameters Parameters
 }
 
-func (opt Option) Copy() Option {
-	p := make([]byte, len(opt.Name)+opt.Parameters.bytes)
+// Size returns number of bytes need to be allocated for use in opt.Copy.
+func (opt Option) Size() int {
+	return len(opt.Name) + opt.Parameters.bytes
+}
+
+// Copy copies all underlying []byte slices into p and returns new Option.
+// Note that p must be at least of opt.Size() length.
+func (opt Option) Copy(p []byte) Option {
 	n := copy(p, opt.Name)
-
 	opt.Name = p[:n]
-	opt.Parameters, _ = opt.Parameters.copy(p[n:])
-
+	opt.Parameters, p = opt.Parameters.Copy(p[n:])
 	return opt
 }
 
@@ -98,7 +102,11 @@ type Parameters struct {
 	dyn   []pair
 }
 
-func (p *Parameters) copy(dst []byte) (Parameters, []byte) {
+func (p *Parameters) Size() int {
+	return p.bytes
+}
+
+func (p *Parameters) Copy(dst []byte) (Parameters, []byte) {
 	ret := Parameters{
 		pos:   p.pos,
 		bytes: p.bytes,
@@ -185,9 +193,9 @@ func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 	})
 }
 
-type SelectFlags byte
+type SelectFlag byte
 
-func (f SelectFlags) String() string {
+func (f SelectFlag) String() string {
 	var flags [2]string
 	var n int
 	if f&SelectCopy != 0 {
@@ -202,27 +210,52 @@ func (f SelectFlags) String() string {
 }
 
 const (
-	SelectCopy SelectFlags = 1 << iota
+	SelectCopy SelectFlag = 1 << iota
 	SelectUnique
 )
 
-// SelectOptions parses header data and appends it to given slice of Option.
+// OptionSelector contains configuration for selecting Options from header value.
+type OptionSelector struct {
+	// Check is a filter function that applied to every Option that possibly
+	// could be selected.
+	// If Check is nil all options are passed.
+	Check func(Option) bool
+
+	Flags SelectFlag
+
+	// Alloc used to allocate slice of bytes when selector is configured with
+	// SelectCopy flag. It will be called with number of bytes needed for copy
+	// of single Option.
+	// If Alloc is nil make is used.
+	Alloc func(n int) []byte
+}
+
+// Select parses header data and appends it to given slice of Option.
 // It also returns flag of successful (wellformed input) parsing.
-func SelectOptions(flags SelectFlags, data []byte, options []Option, check func(Option) bool) ([]Option, bool) {
+func (s OptionSelector) Select(data []byte, options []Option) ([]Option, bool) {
 	var current Option
 	var has bool
 	index := -1
 
+	alloc := s.Alloc
+	if alloc == nil {
+		alloc = defaultAlloc
+	}
+	check := s.Check
+	if check == nil {
+		check = defaultCheck
+	}
+
 	ok := ScanOptions(data, func(idx int, name, attr, val []byte) Control {
 		if idx != index {
 			if has && check(current) {
-				if flags&SelectCopy != 0 {
-					current = current.Copy()
+				if s.Flags&SelectCopy != 0 {
+					current = current.Copy(alloc(current.Size()))
 				}
 				options = append(options, current)
 				has = false
 			}
-			if flags&SelectUnique != 0 {
+			if s.Flags&SelectUnique != 0 {
 				for i := len(options) - 1; i >= 0; i-- {
 					if bytes.Equal(options[i].Name, name) {
 						return ControlSkip
@@ -240,14 +273,17 @@ func SelectOptions(flags SelectFlags, data []byte, options []Option, check func(
 		return ControlContinue
 	})
 	if has && check(current) {
-		if flags&SelectCopy != 0 {
-			current = current.Copy()
+		if s.Flags&SelectCopy != 0 {
+			current = current.Copy(alloc(current.Size()))
 		}
 		options = append(options, current)
 	}
 
 	return options, ok
 }
+
+func defaultAlloc(n int) []byte { return make([]byte, n) }
+func defaultCheck(Option) bool  { return true }
 
 // ScanOptions parses data in this form:
 //
