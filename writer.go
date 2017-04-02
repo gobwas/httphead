@@ -1,6 +1,14 @@
 package httphead
 
-import "bufio"
+import "io"
+
+var (
+	comma     = []byte{','}
+	equality  = []byte{'='}
+	semicolon = []byte{';'}
+	quote     = []byte{'"'}
+	escape    = []byte{'\\'}
+)
 
 // WriteOptions write options list to the dest.
 // It uses the same form as {Scan,Parse}Options functions:
@@ -10,19 +18,19 @@ import "bufio"
 //
 // It wraps valuse into the quoted-string sequence if it contains any
 // non-token characters.
-func WriteOptions(dest *bufio.Writer, options []Option) {
+func WriteOptions(dest io.Writer, options []Option) {
 	for i, opt := range options {
 		if i > 0 {
-			dest.WriteByte(',')
+			dest.Write(comma)
 		}
 
 		writeTokenSanitized(dest, opt.Name)
 
 		for _, p := range opt.Parameters.data() {
-			dest.WriteByte(';')
+			dest.Write(semicolon)
 			writeTokenSanitized(dest, p.key)
 			if len(p.value) != 0 {
-				dest.WriteByte('=')
+				dest.Write(equality)
 				writeTokenSanitized(dest, p.value)
 			}
 		}
@@ -42,24 +50,23 @@ func WriteOptions(dest *bufio.Writer, options []Option) {
 // That is we sanitizing s for writing, so there could not be any header field
 // continuation.
 // That is any CRLF will be escaped as any other control characters not allowd in TEXT.
-func writeTokenSanitized(bw *bufio.Writer, bts []byte) {
+func writeTokenSanitized(bw io.Writer, bts []byte) {
 	var qt bool
 	var pos int
 	for i := 0; i < len(bts); i++ {
 		c := bts[i]
-
 		if !OctetTypes[c].IsToken() && !qt {
 			qt = true
-			bw.WriteByte('"')
+			bw.Write(quote)
 		}
 		if OctetTypes[c].IsControl() || c == '"' {
 			if !qt {
 				qt = true
-				bw.WriteByte('"')
+				bw.Write(quote)
 			}
 			bw.Write(bts[pos:i])
-			bw.WriteByte('\\')
-			bw.WriteByte(c)
+			bw.Write(escape)
+			bw.Write(bts[i : i+1])
 			pos = i + 1
 		}
 	}
@@ -67,6 +74,6 @@ func writeTokenSanitized(bw *bufio.Writer, bts []byte) {
 		bw.Write(bts)
 	} else {
 		bw.Write(bts[pos:])
-		bw.WriteByte('"')
+		bw.Write(quote)
 	}
 }
