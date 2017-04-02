@@ -5,6 +5,11 @@
 // constructions, described here https://tools.ietf.org/html/rfc2616#section-2
 package httphead
 
+import (
+	"bytes"
+	"strings"
+)
+
 // ScanTokens parses data in this form:
 //
 // list = 1#token
@@ -178,6 +183,70 @@ func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 		}
 		return ControlContinue
 	})
+}
+
+type SelectFlags byte
+
+func (f SelectFlags) String() string {
+	var flags [2]string
+	var n int
+	if f&SelectCopy != 0 {
+		flags[n] = "copy"
+		n++
+	}
+	if f&SelectUnique != 0 {
+		flags[n] = "unique"
+		n++
+	}
+	return "[" + strings.Join(flags[:n], "|") + "]"
+}
+
+const (
+	SelectCopy SelectFlags = 1 << iota
+	SelectUnique
+)
+
+// SelectOptions parses header data and appends it to given slice of Option.
+// It also returns flag of successful (wellformed input) parsing.
+func SelectOptions(flags SelectFlags, data []byte, options []Option, check func(Option) bool) ([]Option, bool) {
+	var current Option
+	var has bool
+	index := -1
+
+	ok := ScanOptions(data, func(idx int, name, attr, val []byte) Control {
+		if idx != index {
+			if has && check(current) {
+				if flags&SelectCopy != 0 {
+					current = current.Copy()
+				}
+				options = append(options, current)
+				has = false
+			}
+			if flags&SelectUnique != 0 {
+				for i := len(options) - 1; i >= 0; i-- {
+					if bytes.Equal(options[i].Name, name) {
+						return ControlSkip
+					}
+				}
+			}
+			index = idx
+			current = Option{Name: name}
+			has = true
+		}
+		if attr != nil {
+			current.Parameters.Set(attr, val)
+		}
+
+		return ControlContinue
+	})
+	if has && check(current) {
+		if flags&SelectCopy != 0 {
+			current = current.Copy()
+		}
+		options = append(options, current)
+	}
+
+	return options, ok
 }
 
 // ScanOptions parses data in this form:

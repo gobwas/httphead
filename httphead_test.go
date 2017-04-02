@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
+	"sort"
 	"testing"
 )
 
@@ -95,12 +96,6 @@ var listCases = []struct {
 	},
 }
 
-func randAscii(dst []byte) {
-	for i := 0; i < len(dst); i++ {
-		dst[i] = byte(rand.Intn('z'-'a')) + 'a'
-	}
-}
-
 func TestOptionCopy(t *testing.T) {
 	for i, test := range []struct {
 		pairs int
@@ -186,6 +181,12 @@ func BenchmarkScanTokens(b *testing.B) {
 				_ = ScanTokens(bench.in, func(v []byte) bool { return true })
 			}
 		})
+	}
+}
+
+func randAscii(dst []byte) {
+	for i := 0; i < len(dst); i++ {
+		dst[i] = byte(rand.Intn('z'-'a')) + 'a'
 	}
 }
 
@@ -321,4 +322,176 @@ func BenchmarkParameters(b *testing.B) {
 			}
 		})
 	}
+}
+
+var selectOptionsCases = []struct {
+	label string
+	flags SelectFlags
+	in    []byte
+	p     []Option
+	check func(Option) bool
+	exp   []Option
+	ok    bool
+}{
+	{
+		label: "simple",
+		in:    []byte(`foo;a=1,foo;a=2`),
+		p:     nil,
+		flags: SelectCopy | SelectUnique,
+		check: func(opt Option) bool { return true },
+		exp: []Option{
+			NewOption("foo", map[string]string{"a": "1"}),
+		},
+		ok: true,
+	},
+	{
+		label: "simple_no_alloc",
+		in:    []byte(`foo;a=1,foo;a=2`),
+		p:     make([]Option, 0, 2),
+		flags: SelectUnique,
+		check: func(opt Option) bool { return true },
+		exp: []Option{
+			NewOption("foo", map[string]string{"a": "1"}),
+		},
+		ok: true,
+	},
+	{
+		label: "multiparam_stack",
+		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
+		p:     make([]Option, 0, 2),
+		flags: SelectUnique,
+		check: func(opt Option) bool { return true },
+		exp: []Option{
+			NewOption("foo", map[string]string{
+				"a": "1",
+				"b": "2",
+				"c": "3",
+				"d": "4",
+				"e": "5",
+				"f": "6",
+				"g": "7",
+				"h": "8",
+			}),
+			NewOption("bar", nil),
+		},
+		ok: true,
+	},
+	{
+		label: "multiparam_stack",
+		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8,bar`),
+		p:     make([]Option, 0, 2),
+		flags: SelectUnique | SelectCopy,
+		check: func(opt Option) bool { return true },
+		exp: []Option{
+			NewOption("foo", map[string]string{
+				"a": "1",
+				"b": "2",
+				"c": "3",
+				"d": "4",
+				"e": "5",
+				"f": "6",
+				"g": "7",
+				"h": "8",
+			}),
+			NewOption("bar", nil),
+		},
+		ok: true,
+	},
+	{
+		label: "multiparam_heap",
+		in:    []byte(`foo;a=1;b=2;c=3;d=4;e=5;f=6;g=7;h=8;i=9;j=10,bar`),
+		p:     make([]Option, 0, 2),
+		flags: SelectUnique | SelectCopy,
+		check: func(opt Option) bool { return true },
+		exp: []Option{
+			NewOption("foo", map[string]string{
+				"a": "1",
+				"b": "2",
+				"c": "3",
+				"d": "4",
+				"e": "5",
+				"f": "6",
+				"g": "7",
+				"h": "8",
+				"i": "9",
+				"j": "10",
+			}),
+			NewOption("bar", nil),
+		},
+		ok: true,
+	},
+}
+
+func TestSelectOptions(t *testing.T) {
+	for _, test := range selectOptionsCases {
+		t.Run(test.label+test.flags.String(), func(t *testing.T) {
+			act, ok := SelectOptions(test.flags, test.in, test.p, test.check)
+			if ok != test.ok {
+				t.Errorf("SelectOptions(%q) wellformed sign is %v; want %v", string(test.in), ok, test.ok)
+			}
+			if !optionsEqual(act, test.exp) {
+				t.Errorf("SelectOptions(%q) = %v; want %v", string(test.in), act, test.exp)
+			}
+		})
+	}
+}
+
+func BenchmarkSelectOptions(b *testing.B) {
+	for _, test := range selectOptionsCases {
+		b.Run(test.label+test.flags.String(), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				_, _ = SelectOptions(test.flags, test.in, test.p, test.check)
+			}
+		})
+	}
+}
+
+func optionsEqual(a, b []Option) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		if !optionEqual(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func optionEqual(a, b Option) bool {
+	if bytes.Equal(a.Name, b.Name) {
+		return paramEqual(a.Parameters, b.Parameters)
+	}
+	return false
+}
+
+type pairs []pair
+
+func (p pairs) Len() int           { return len(p) }
+func (p pairs) Less(a, b int) bool { return bytes.Compare(p[a].key, p[b].key) == -1 }
+func (p pairs) Swap(a, b int)      { p[a], p[b] = p[b], p[a] }
+
+func paramEqual(a, b Parameters) bool {
+	switch {
+	case a.dyn == nil && b.dyn == nil:
+	case a.dyn != nil && b.dyn != nil:
+	default:
+		return false
+	}
+
+	ad, bd := a.data(), b.data()
+	if len(ad) != len(bd) {
+		return false
+	}
+
+	sort.Sort(pairs(ad))
+	sort.Sort(pairs(bd))
+
+	for i := 0; i < len(ad); i++ {
+		av, bv := ad[i], bd[i]
+		if !bytes.Equal(av.key, bv.key) || !bytes.Equal(av.value, bv.value) {
+			return false
+		}
+	}
+	return true
 }
