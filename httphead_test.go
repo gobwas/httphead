@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"math/rand"
-	"sort"
 	"testing"
 )
 
@@ -456,45 +455,7 @@ func optionsEqual(a, b []Option) bool {
 		return false
 	}
 	for i := 0; i < len(a); i++ {
-		if !optionEqual(a[i], b[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func optionEqual(a, b Option) bool {
-	if bytes.Equal(a.Name, b.Name) {
-		return paramEqual(a.Parameters, b.Parameters)
-	}
-	return false
-}
-
-type pairs []pair
-
-func (p pairs) Len() int           { return len(p) }
-func (p pairs) Less(a, b int) bool { return bytes.Compare(p[a].key, p[b].key) == -1 }
-func (p pairs) Swap(a, b int)      { p[a], p[b] = p[b], p[a] }
-
-func paramEqual(a, b Parameters) bool {
-	switch {
-	case a.dyn == nil && b.dyn == nil:
-	case a.dyn != nil && b.dyn != nil:
-	default:
-		return false
-	}
-
-	ad, bd := a.data(), b.data()
-	if len(ad) != len(bd) {
-		return false
-	}
-
-	sort.Sort(pairs(ad))
-	sort.Sort(pairs(bd))
-
-	for i := 0; i < len(ad); i++ {
-		av, bv := ad[i], bd[i]
-		if !bytes.Equal(av.key, bv.key) || !bytes.Equal(av.value, bv.value) {
+		if !a[i].Equal(b[i]) {
 			return false
 		}
 	}

@@ -7,6 +7,7 @@ package httphead
 
 import (
 	"bytes"
+	"sort"
 	"strings"
 )
 
@@ -93,6 +94,44 @@ func (p pair) copy(dst []byte) (pair, []byte) {
 	dst = dst[m:]
 
 	return p, dst
+}
+
+func (a Option) Equal(b Option) bool {
+	if bytes.Equal(a.Name, b.Name) {
+		return a.Parameters.Equal(b.Parameters)
+	}
+	return false
+}
+
+type pairs []pair
+
+func (p pairs) Len() int           { return len(p) }
+func (p pairs) Less(a, b int) bool { return bytes.Compare(p[a].key, p[b].key) == -1 }
+func (p pairs) Swap(a, b int)      { p[a], p[b] = p[b], p[a] }
+
+func (a Parameters) Equal(b Parameters) bool {
+	switch {
+	case a.dyn == nil && b.dyn == nil:
+	case a.dyn != nil && b.dyn != nil:
+	default:
+		return false
+	}
+
+	ad, bd := a.data(), b.data()
+	if len(ad) != len(bd) {
+		return false
+	}
+
+	sort.Sort(pairs(ad))
+	sort.Sort(pairs(bd))
+
+	for i := 0; i < len(ad); i++ {
+		av, bv := ad[i], bd[i]
+		if !bytes.Equal(av.key, bv.key) || !bytes.Equal(av.value, bv.value) {
+			return false
+		}
+	}
+	return true
 }
 
 type Parameters struct {
