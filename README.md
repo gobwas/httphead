@@ -4,6 +4,10 @@
 
 > Tiny HTTP header value parsing library in go.
 
+## Overview
+
+This library contains low-level functions for scanning HTTP RFC2616 compatible header value grammars.
+
 ## Install
 
 ```shell
