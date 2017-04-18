@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestScannerSkip(t *testing.T) {
+func TestScannerSkipEscaped(t *testing.T) {
 	for _, test := range []struct {
 		in  []byte
 		c   byte
@@ -23,7 +23,7 @@ func TestScannerSkip(t *testing.T) {
 		},
 	} {
 		s := NewScanner(test.in)
-		s.Skip(test.c)
+		s.SkipEscaped(test.c)
 		if act, exp := s.pos, test.pos; act != exp {
 			t.Errorf("unexpected scanner pos: %v; want %v", act, exp)
 		}

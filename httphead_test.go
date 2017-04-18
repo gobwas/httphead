@@ -95,60 +95,6 @@ var listCases = []struct {
 	},
 }
 
-func TestOptionCopy(t *testing.T) {
-	for i, test := range []struct {
-		pairs int
-	}{
-		{4},
-		{16},
-	} {
-
-		name := []byte(fmt.Sprintf("test:%d", i))
-		n := make([]byte, len(name))
-		copy(n, name)
-		opt := Option{Name: n}
-
-		pairs := make([]pair, test.pairs)
-		for i := 0; i < len(pairs); i++ {
-			pair := pair{make([]byte, 8), make([]byte, 8)}
-			randAscii(pair.key)
-			randAscii(pair.value)
-			pairs[i] = pair
-
-			k, v := make([]byte, len(pair.key)), make([]byte, len(pair.value))
-			copy(k, pair.key)
-			copy(v, pair.value)
-
-			opt.Parameters.Set(k, v)
-		}
-
-		cp := opt.Copy(make([]byte, opt.Size()))
-
-		memset(opt.Name, 'x')
-		for _, p := range opt.Parameters.data() {
-			memset(p.key, 'x')
-			memset(p.value, 'x')
-		}
-
-		if !bytes.Equal(cp.Name, name) {
-			t.Errorf("name was not copied properly: %q; want %q", string(cp.Name), string(name))
-		}
-		for i, p := range cp.Parameters.data() {
-			exp := pairs[i]
-			if !bytes.Equal(p.key, exp.key) || !bytes.Equal(p.value, exp.value) {
-				t.Errorf(
-					"%d-th pair was not copied properly: %q=%q; want %q=%q",
-					i, string(p.key), string(p.value), string(exp.key), string(exp.value),
-				)
-			}
-		}
-	}
-}
-
-func memset(dst []byte, v byte) {
-	copy(dst, bytes.Repeat([]byte{v}, len(dst)))
-}
-
 func TestScanTokens(t *testing.T) {
 	for _, test := range listCases {
 		t.Run(test.label, func(t *testing.T) {
@@ -460,4 +406,58 @@ func optionsEqual(a, b []Option) bool {
 		}
 	}
 	return true
+}
+
+func TestOptionCopy(t *testing.T) {
+	for i, test := range []struct {
+		pairs int
+	}{
+		{4},
+		{16},
+	} {
+
+		name := []byte(fmt.Sprintf("test:%d", i))
+		n := make([]byte, len(name))
+		copy(n, name)
+		opt := Option{Name: n}
+
+		pairs := make([]pair, test.pairs)
+		for i := 0; i < len(pairs); i++ {
+			pair := pair{make([]byte, 8), make([]byte, 8)}
+			randAscii(pair.key)
+			randAscii(pair.value)
+			pairs[i] = pair
+
+			k, v := make([]byte, len(pair.key)), make([]byte, len(pair.value))
+			copy(k, pair.key)
+			copy(v, pair.value)
+
+			opt.Parameters.Set(k, v)
+		}
+
+		cp := opt.Copy(make([]byte, opt.Size()))
+
+		memset(opt.Name, 'x')
+		for _, p := range opt.Parameters.data() {
+			memset(p.key, 'x')
+			memset(p.value, 'x')
+		}
+
+		if !bytes.Equal(cp.Name, name) {
+			t.Errorf("name was not copied properly: %q; want %q", string(cp.Name), string(name))
+		}
+		for i, p := range cp.Parameters.data() {
+			exp := pairs[i]
+			if !bytes.Equal(p.key, exp.key) || !bytes.Equal(p.value, exp.value) {
+				t.Errorf(
+					"%d-th pair was not copied properly: %q=%q; want %q=%q",
+					i, string(p.key), string(p.value), string(exp.key), string(exp.value),
+				)
+			}
+		}
+	}
+}
+
+func memset(dst []byte, v byte) {
+	copy(dst, bytes.Repeat([]byte{v}, len(dst)))
 }

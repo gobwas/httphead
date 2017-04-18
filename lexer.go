@@ -1,6 +1,8 @@
 package httphead
 
-import "bytes"
+import (
+	"bytes"
+)
 
 type ItemType int
 
@@ -10,6 +12,7 @@ const (
 	ItemSeparator
 	ItemString
 	ItemComment
+	ItemOctet
 )
 
 // Scanner represents header tokens scanner.
@@ -31,16 +34,11 @@ func NewScanner(data []byte) *Scanner {
 // Next scans for next token. It returns true on successful scanning, and false
 // on error or EOF.
 func (l *Scanner) Next() bool {
-	if l.err {
+	c, ok := l.next()
+	if !ok {
 		return false
 	}
-
-	l.pos += skipSpace(l.data[l.pos:])
-	if l.pos == len(l.data) {
-		return false
-	}
-
-	switch l.data[l.pos] {
+	switch c {
 	case '"': // quoted-string;
 		return l.fetchQuotedString()
 
@@ -52,15 +50,56 @@ func (l *Scanner) Next() bool {
 		return false
 
 	default:
-		return l.readToken()
+		return l.fetchToken()
 	}
+}
+
+func (l *Scanner) NextOctet(c byte) bool {
+	_, ok := l.next()
+	if !ok {
+		return false
+	}
+	return l.fetchOctet(c)
+}
+
+func (l *Scanner) Peek() byte {
+	if l.pos == len(l.data) {
+		return 0
+	}
+	return l.data[l.pos]
+}
+
+func (l *Scanner) next() (byte, bool) {
+	if l.err {
+		return 0, false
+	}
+	l.pos += SkipSpace(l.data[l.pos:])
+	if l.pos == len(l.data) {
+		return 0, false
+	}
+	return l.data[l.pos], true
 }
 
 func (l *Scanner) Skip(c byte) {
 	if l.err {
 		return
 	}
+	// Reset scanner state.
+	l.itemType = ItemUndef
+	l.itemBytes = nil
 
+	if i := bytes.IndexByte(l.data[l.pos:], c); i == -1 {
+		// Reached the end of data.
+		l.pos = len(l.data)
+	} else {
+		l.pos += i + 1
+	}
+}
+
+func (l *Scanner) SkipEscaped(c byte) {
+	if l.err {
+		return
+	}
 	// Reset scanner state.
 	l.itemType = ItemUndef
 	l.itemBytes = nil
@@ -69,7 +108,6 @@ func (l *Scanner) Skip(c byte) {
 		// Reached the end of data.
 		l.pos = len(l.data)
 	} else {
-		// Seek data to the next index after first matched char.
 		l.pos += i + 1
 	}
 }
@@ -82,8 +120,23 @@ func (l *Scanner) Bytes() []byte {
 	return l.itemBytes
 }
 
-func (l *Scanner) readToken() bool {
-	n, t := fetchToken(l.data[l.pos:])
+func (l *Scanner) fetchOctet(c byte) bool {
+	i := l.pos
+	if j := bytes.IndexByte(l.data[l.pos:], c); j == -1 {
+		// Reached the end of data.
+		l.pos = len(l.data)
+	} else {
+		l.pos += j
+	}
+
+	l.itemType = ItemOctet
+	l.itemBytes = l.data[i:l.pos]
+
+	return true
+}
+
+func (l *Scanner) fetchToken() bool {
+	n, t := ScanToken(l.data[l.pos:])
 	if n == -1 {
 		l.err = true
 		return false
@@ -209,9 +262,9 @@ func RemoveByte(data []byte, c byte) []byte {
 	return result[:k]
 }
 
-// skipSpace skips spaces and lws-sequences from p.
+// SkipSpace skips spaces and lws-sequences from p.
 // It returns number ob bytes skipped.
-func skipSpace(p []byte) (n int) {
+func SkipSpace(p []byte) (n int) {
 	for len(p) > 0 {
 		switch {
 		case len(p) >= 3 &&
@@ -230,9 +283,9 @@ func skipSpace(p []byte) (n int) {
 	return
 }
 
-// fetchToken fetches token from p. It returns starting position and length of
-// the token. P must be trimmed left from whitespace.
-func fetchToken(p []byte) (n int, t ItemType) {
+// ScanToken scan for next token in p. It returns length of the token and its
+// type. It do not trim p.
+func ScanToken(p []byte) (n int, t ItemType) {
 	if len(p) == 0 {
 		return 0, ItemUndef
 	}

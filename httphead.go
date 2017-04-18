@@ -446,7 +446,8 @@ func ScanOptions(data []byte, it func(index int, option, attribute, value []byte
 
 			case ControlSkip:
 				// User want to skip current param.
-				lexer.Skip(',')
+				state = stateKey
+				lexer.SkipEscaped(',')
 
 			case ControlContinue:
 				// User is interested in rest of parameters.
