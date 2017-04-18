@@ -8,7 +8,7 @@ package httphead
 // You could validate cookie value manually by calling ValidCookieValue().
 //
 // See https://tools.ietf.org/html/rfc6265#section-4.1.1
-func ScanCookies(data []byte, validate bool, it func(key, value []byte) Control) bool {
+func ScanCookies(data []byte, validate bool, it func(key, value []byte) bool) bool {
 	lexer := &Scanner{data: data}
 
 	var (
@@ -59,16 +59,8 @@ func ScanCookies(data []byte, validate bool, it func(key, value []byte) Control)
 				return false
 			}
 
-			switch it(key, value) {
-			case ControlBreak:
+			if !it(key, value) {
 				return true
-			case ControlSkip:
-				state = stateKey
-				lexer.Skip(';')
-			case ControlContinue:
-				//
-			default:
-				panic("unexpected control value")
 			}
 
 			state = stateBeforeKey

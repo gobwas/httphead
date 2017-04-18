@@ -90,9 +90,9 @@ func TestScanCookies(t *testing.T) {
 	for _, test := range cookiesCases {
 		t.Run(test.label, func(t *testing.T) {
 			var act []cookieTuple
-			ok := ScanCookies(test.in, true, func(k, v []byte) Control {
+			ok := ScanCookies(test.in, true, func(k, v []byte) bool {
 				act = append(act, cookieTuple{k, v})
-				return ControlContinue
+				return true
 			})
 			if ok != test.ok {
 				t.Errorf("unexpected result: %v; want %v", ok, test.ok)
@@ -119,8 +119,8 @@ func BenchmarkScanCookies(b *testing.B) {
 	for _, test := range cookiesCases {
 		b.Run(test.label, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				ScanCookies(test.in, true, func(_, _ []byte) Control {
-					return ControlContinue
+				ScanCookies(test.in, true, func(_, _ []byte) bool {
+					return true
 				})
 			}
 		})
