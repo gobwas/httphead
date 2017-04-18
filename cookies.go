@@ -1,14 +1,19 @@
 package httphead
 
-func ScanCookies(data []byte, it func(index int, k, v []byte) Control) bool {
+// ScanCookies maps data to key-value pairs that could lay inside the Cookie header.
+//
+// If validate is true, then it validates each value bytes to be valid RFC6265
+// cookie-octet. If validate is false, then it only strips the double quotes
+// (if both first and last byte is double quote) of value.
+// You could validate cookie value manually by calling ValidCookieValue().
+//
+// See https://tools.ietf.org/html/rfc6265#section-4.1.1
+func ScanCookies(data []byte, validate bool, it func(key, value []byte) Control) bool {
 	lexer := &Scanner{data: data}
 
 	var (
-		index int
-
 		key   []byte
 		value []byte
-
 		state int
 	)
 	const (
@@ -16,10 +21,7 @@ func ScanCookies(data []byte, it func(index int, k, v []byte) Control) bool {
 		stateBeforeKey
 		stateValue
 	)
-
 	for lexer.Next() {
-		var growIndex int
-
 		switch lexer.Type() {
 		case ItemToken:
 			if state != stateKey {
@@ -53,31 +55,25 @@ func ScanCookies(data []byte, it func(index int, k, v []byte) Control) bool {
 
 			value = lexer.Bytes()
 			value = stripQuotes(value)
-			if !validateCookieValue(value) {
+			if validate && !ValidCookieValue(value) {
 				return false
 			}
 
+			switch it(key, value) {
+			case ControlBreak:
+				return true
+			case ControlSkip:
+				state = stateKey
+				lexer.Skip(';')
+			case ControlContinue:
+				//
+			default:
+				panic("unexpected control value")
+			}
+
 			state = stateBeforeKey
-			growIndex = 1
+
 		}
-
-		switch it(index, key, value) {
-		case ControlBreak:
-			return true
-
-		case ControlSkip:
-			state = stateKey
-			lexer.Skip(';')
-
-		case ControlContinue:
-			//
-
-		default:
-			panic("unexpected control value")
-		}
-
-		index += growIndex
-		value = nil
 	}
 	if state != stateBeforeKey {
 		return false
@@ -93,7 +89,9 @@ func stripQuotes(bts []byte) []byte {
 	return bts
 }
 
-func validateCookieValue(value []byte) bool {
+// ValidCookieValue reports whether given value is a valid RFC6265 value
+// octets.
+func ValidCookieValue(value []byte) bool {
 	for _, c := range value {
 		if t := OctetTypes[c]; t.IsControl() || t.IsSpace() {
 			return false
