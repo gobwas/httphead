@@ -1,6 +1,6 @@
 package httphead
 
-// ScanCookies maps data to key-value pairs that could lay inside the Cookie header.
+// ScanCookie maps data to key-value pairs that could lay inside the Cookie header.
 //
 // If validate is true, then it validates each value bytes to be valid RFC6265
 // cookie-octet. If validate is false, then it only strips the double quotes
@@ -8,7 +8,7 @@ package httphead
 // You could validate cookie value manually by calling ValidCookieValue().
 //
 // See https://tools.ietf.org/html/rfc6265#section-4.1.1
-func ScanCookies(data []byte, validate bool, it func(key, value []byte) bool) bool {
+func ScanCookie(data []byte, validate bool, it func(key, value []byte) bool) bool {
 	lexer := &Scanner{data: data}
 
 	var (
