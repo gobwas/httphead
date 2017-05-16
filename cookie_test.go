@@ -14,6 +14,8 @@ var cookieCases = []struct {
 	in    []byte
 	ok    bool
 	exp   []cookieTuple
+
+	disableValidation bool
 }{
 	{
 		label: "simple",
@@ -33,7 +35,7 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "simple_duplicate",
+		label: "duplicate",
 		in:    []byte(`foo=bar; bar=baz; foo=bar`),
 		ok:    true,
 		exp: []cookieTuple{
@@ -43,12 +45,39 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "simple_quoted",
+		label: "quoted",
 		in:    []byte(`foo="bar"`),
 		ok:    true,
 		exp: []cookieTuple{
 			{[]byte(`foo`), []byte(`bar`)},
 		},
+	},
+	{
+		label: "empty value",
+		in:    []byte(`foo=`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`foo`), []byte{}},
+		},
+	},
+	{
+		label: "empty value",
+		in:    []byte(`foo=; bar=baz`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`foo`), []byte{}},
+			{[]byte(`bar`), []byte(`baz`)},
+		},
+	},
+	{
+		label: "quote as value",
+		in:    []byte(`foo="; bar=baz`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`foo`), []byte{'"'}},
+			{[]byte(`bar`), []byte(`baz`)},
+		},
+		disableValidation: true,
 	},
 	{
 		label: "error_trailing_semicolon",
@@ -90,7 +119,7 @@ func TestScanCookie(t *testing.T) {
 	for _, test := range cookieCases {
 		t.Run(test.label, func(t *testing.T) {
 			var act []cookieTuple
-			ok := ScanCookie(test.in, true, func(k, v []byte) bool {
+			ok := ScanCookie(test.in, !test.disableValidation, func(k, v []byte) bool {
 				act = append(act, cookieTuple{k, v})
 				return true
 			})

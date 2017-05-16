@@ -32,24 +32,27 @@ func ScanCookie(data []byte, validate bool, it func(key, value []byte) bool) boo
 			state = stateValue
 
 		case ItemSeparator:
-			if state == stateBeforeKey {
+			switch {
+			case state == stateBeforeKey:
 				// Pairs separated by ";" and space, according to the RFC6265:
 				//   cookie-pair *( ";" SP cookie-pair )
-				if !isSemicolon(lexer.Bytes()) {
-					return false
+				if isSemicolon(lexer.Bytes()) && lexer.Peek() == ' ' {
+					state = stateKey
+					continue
 				}
-				if lexer.Peek() != ' ' {
-					return false
-				}
-
-				state = stateKey
-				continue
-			}
-
-			if state != stateValue || !isEquality(lexer.Bytes()) {
 				return false
-			}
-			if !lexer.NextOctet(';') {
+
+			case state == stateValue:
+				// Value is starts after "=" char, according to the RFC6265:
+				//   cookie-pair = cookie-name "=" cookie-value
+				if !isEquality(lexer.Bytes()) {
+					return false
+				}
+
+				// Fetch bytes until the end of pair/input.
+				lexer.NextOctet(';')
+
+			default:
 				return false
 			}
 
@@ -58,13 +61,11 @@ func ScanCookie(data []byte, validate bool, it func(key, value []byte) bool) boo
 			if validate && !ValidCookieValue(value) {
 				return false
 			}
-
 			if !it(key, value) {
 				return true
 			}
 
 			state = stateBeforeKey
-
 		}
 	}
 	if state != stateBeforeKey {
@@ -75,7 +76,7 @@ func ScanCookie(data []byte, validate bool, it func(key, value []byte) bool) boo
 }
 
 func stripQuotes(bts []byte) []byte {
-	if last := len(bts) - 1; bts[0] == '"' && bts[last] == '"' {
+	if last := len(bts) - 1; last > 0 && bts[0] == '"' && bts[last] == '"' {
 		return bts[1:last]
 	}
 	return bts

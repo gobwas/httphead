@@ -70,6 +70,9 @@ func (l *Scanner) Peek() byte {
 }
 
 func (l *Scanner) next() (byte, bool) {
+	// Reset scanner state.
+	l.resetItem()
+
 	if l.err {
 		return 0, false
 	}
@@ -85,8 +88,7 @@ func (l *Scanner) Skip(c byte) {
 		return
 	}
 	// Reset scanner state.
-	l.itemType = ItemUndef
-	l.itemBytes = nil
+	l.resetItem()
 
 	if i := bytes.IndexByte(l.data[l.pos:], c); i == -1 {
 		// Reached the end of data.
@@ -101,8 +103,7 @@ func (l *Scanner) SkipEscaped(c byte) {
 		return
 	}
 	// Reset scanner state.
-	l.itemType = ItemUndef
-	l.itemBytes = nil
+	l.resetItem()
 
 	if i := ScanUntil(l.data[l.pos:], c); i == -1 {
 		// Reached the end of data.
@@ -118,6 +119,11 @@ func (l *Scanner) Type() ItemType {
 
 func (l *Scanner) Bytes() []byte {
 	return l.itemBytes
+}
+
+func (l *Scanner) resetItem() {
+	l.itemType = ItemUndef
+	l.itemBytes = nil
 }
 
 func (l *Scanner) fetchOctet(c byte) bool {
