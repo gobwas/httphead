@@ -4,14 +4,21 @@ import (
 	"bytes"
 )
 
+// ItemType encodes type of the lexing token.
 type ItemType int
 
 const (
+	// ItemUndef reports that token is undefined.
 	ItemUndef ItemType = iota
+	// ItemToken reports that token is RFC2616 token.
 	ItemToken
+	// ItemSeparator reports that token is RFC2616 separator.
 	ItemSeparator
+	// ItemString reports that token is RFC2616 quouted string.
 	ItemString
+	// ItemComment reports that token is RFC2616 comment.
 	ItemComment
+	// ItemOctet reports that token is octet slice.
 	ItemOctet
 )
 
@@ -27,6 +34,7 @@ type Scanner struct {
 	err bool
 }
 
+// NewScanner creates new RFC2616 data scanner.
 func NewScanner(data []byte) *Scanner {
 	return &Scanner{data: data}
 }
@@ -34,7 +42,7 @@ func NewScanner(data []byte) *Scanner {
 // Next scans for next token. It returns true on successful scanning, and false
 // on error or EOF.
 func (l *Scanner) Next() bool {
-	c, ok := l.next()
+	c, ok := l.nextChar()
 	if !ok {
 		return false
 	}
@@ -54,14 +62,18 @@ func (l *Scanner) Next() bool {
 	}
 }
 
-func (l *Scanner) NextOctet(c byte) bool {
-	_, ok := l.next()
-	if !ok {
+// FetchUntil fetches ItemOctet from current scanner position to first
+// occurence of the c or to the end of the underlying data.
+func (l *Scanner) FetchUntil(c byte) bool {
+	l.resetItem()
+	if l.pos == len(l.data) {
 		return false
 	}
 	return l.fetchOctet(c)
 }
 
+// Peek reads byte at current position without advancing it. On end of data it
+// returns 0.
 func (l *Scanner) Peek() byte {
 	if l.pos == len(l.data) {
 		return 0
@@ -69,20 +81,35 @@ func (l *Scanner) Peek() byte {
 	return l.data[l.pos]
 }
 
-func (l *Scanner) next() (byte, bool) {
-	// Reset scanner state.
-	l.resetItem()
-
-	if l.err {
-		return 0, false
-	}
-	l.pos += SkipSpace(l.data[l.pos:])
+// Peek2 reads two first bytes at current position without advancing it.
+// If there not enough data it returs 0.
+func (l *Scanner) Peek2() (a, b byte) {
 	if l.pos == len(l.data) {
-		return 0, false
+		return 0, 0
 	}
-	return l.data[l.pos], true
+	if l.pos+1 == len(l.data) {
+		return l.data[l.pos], 0
+	}
+	return l.data[l.pos], l.data[l.pos+1]
 }
 
+// Buffered reporst how many bytes there are left to scan.
+func (l *Scanner) Buffered() int {
+	return len(l.data) - l.pos
+}
+
+// Advance moves current position index at n bytes. It returns true on
+// successful move.
+func (l *Scanner) Advance(n int) bool {
+	l.pos += n
+	if l.pos > len(l.data) {
+		l.pos = len(l.data)
+		return false
+	}
+	return true
+}
+
+// Skip skips all bytes until first occurence of c.
 func (l *Scanner) Skip(c byte) {
 	if l.err {
 		return
@@ -98,6 +125,7 @@ func (l *Scanner) Skip(c byte) {
 	}
 }
 
+// SkipEscaped skips all bytes until first occurence of non-escaped c.
 func (l *Scanner) SkipEscaped(c byte) {
 	if l.err {
 		return
@@ -113,12 +141,28 @@ func (l *Scanner) SkipEscaped(c byte) {
 	}
 }
 
+// Type reports current token type.
 func (l *Scanner) Type() ItemType {
 	return l.itemType
 }
 
+// Bytes returns current token bytes.
 func (l *Scanner) Bytes() []byte {
 	return l.itemBytes
+}
+
+func (l *Scanner) nextChar() (byte, bool) {
+	// Reset scanner state.
+	l.resetItem()
+
+	if l.err {
+		return 0, false
+	}
+	l.pos += SkipSpace(l.data[l.pos:])
+	if l.pos == len(l.data) {
+		return 0, false
+	}
+	return l.data[l.pos], true
 }
 
 func (l *Scanner) resetItem() {
@@ -281,7 +325,7 @@ func SkipSpace(p []byte) (n int) {
 			n += 3
 		case OctetTypes[p[0]].IsSpace():
 			p = p[1:]
-			n += 1
+			n++
 		default:
 			return
 		}

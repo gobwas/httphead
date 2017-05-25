@@ -31,27 +31,6 @@ func ExampleScanOptions() {
 	// Output: bar:1 baz:
 }
 
-func ExampleScanOptionsChoise() {
-	type pair struct {
-		Key, Value string
-	}
-
-	// The right part of full header line like:
-	//
-	// X-My-Header: key;foo=bar;baz,key;baz
-	//
-	header := []byte(`key;foo=bar;baz,key;baz`)
-
-	choises := make([][]pair, 2)
-	ScanOptions(header, func(i int, key, param, value []byte) Control {
-		choises[i] = append(choises[i], pair{string(param), string(value)})
-		return ControlContinue
-	})
-
-	fmt.Println(choises)
-	// Output: [[{foo bar} {baz }] [{baz }]]
-}
-
 func ExampleParseOptions() {
 	options, ok := ParseOptions([]byte(`foo;bar=1,baz`), nil)
 	fmt.Println(options, ok)
@@ -129,7 +108,7 @@ func BenchmarkScanTokens(b *testing.B) {
 	}
 }
 
-func randAscii(dst []byte) {
+func randASCII(dst []byte) {
 	for i := 0; i < len(dst); i++ {
 		dst[i] = byte(rand.Intn('z'-'a')) + 'a'
 	}
@@ -424,8 +403,8 @@ func TestOptionCopy(t *testing.T) {
 		pairs := make([]pair, test.pairs)
 		for i := 0; i < len(pairs); i++ {
 			pair := pair{make([]byte, 8), make([]byte, 8)}
-			randAscii(pair.key)
-			randAscii(pair.value)
+			randASCII(pair.key)
+			randASCII(pair.value)
 			pairs[i] = pair
 
 			k, v := make([]byte, len(pair.key)), make([]byte, len(pair.value))

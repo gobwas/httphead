@@ -19,24 +19,24 @@ var (
 // It wraps valuse into the quoted-string sequence if it contains any
 // non-token characters.
 func WriteOptions(dest io.Writer, options []Option) (n int, err error) {
-	w := &writerErrHolder{w: dest}
+	w := writer{w: dest}
 	for i, opt := range options {
 		if i > 0 {
-			w.Write(comma)
+			w.write(comma)
 		}
 
-		writeTokenSanitized(w, opt.Name)
+		writeTokenSanitized(&w, opt.Name)
 
 		for _, p := range opt.Parameters.data() {
-			w.Write(semicolon)
-			writeTokenSanitized(w, p.key)
+			w.write(semicolon)
+			writeTokenSanitized(&w, p.key)
 			if len(p.value) != 0 {
-				w.Write(equality)
-				writeTokenSanitized(w, p.value)
+				w.write(equality)
+				writeTokenSanitized(&w, p.value)
 			}
 		}
 	}
-	return w.n, w.err
+	return w.result()
 }
 
 // writeTokenSanitized writes token as is or as quouted string if it contains
@@ -52,47 +52,50 @@ func WriteOptions(dest io.Writer, options []Option) (n int, err error) {
 // That is we sanitizing s for writing, so there could not be any header field
 // continuation.
 // That is any CRLF will be escaped as any other control characters not allowd in TEXT.
-func writeTokenSanitized(bw io.Writer, bts []byte) {
+func writeTokenSanitized(bw *writer, bts []byte) {
 	var qt bool
 	var pos int
 	for i := 0; i < len(bts); i++ {
 		c := bts[i]
 		if !OctetTypes[c].IsToken() && !qt {
 			qt = true
-			bw.Write(quote)
+			bw.write(quote)
 		}
 		if OctetTypes[c].IsControl() || c == '"' {
 			if !qt {
 				qt = true
-				bw.Write(quote)
+				bw.write(quote)
 			}
-			bw.Write(bts[pos:i])
-			bw.Write(escape)
-			bw.Write(bts[i : i+1])
+			bw.write(bts[pos:i])
+			bw.write(escape)
+			bw.write(bts[i : i+1])
 			pos = i + 1
 		}
 	}
 	if !qt {
-		bw.Write(bts)
+		bw.write(bts)
 	} else {
-		bw.Write(bts[pos:])
-		bw.Write(quote)
+		bw.write(bts[pos:])
+		bw.write(quote)
 	}
 }
 
-type writerErrHolder struct {
-	w io.Writer
-
+type writer struct {
+	w   io.Writer
 	n   int
 	err error
 }
 
-func (w *writerErrHolder) Write(p []byte) (n int, err error) {
+func (w *writer) write(p []byte) {
 	if w.err != nil {
-		return 0, w.err
+		return
 	}
-	n, err = w.w.Write(p)
-	w.err = err
+	var n int
+	n, w.err = w.w.Write(p)
 	w.n += n
 	return
+}
+
+func (w *writer) result() (int, error) {
+	return w.n, w.err
 }
