@@ -7,7 +7,6 @@ package httphead
 
 import (
 	"bytes"
-	"sort"
 	"strings"
 )
 
@@ -39,182 +38,8 @@ func ScanTokens(data []byte, it func([]byte) bool) bool {
 	return ok && !lexer.err
 }
 
-type Control byte
-
-const (
-	ControlContinue Control = iota
-	ControlBreak
-	ControlSkip
-)
-
-type Option struct {
-	Name       []byte
-	Parameters Parameters
-}
-
-// Size returns number of bytes need to be allocated for use in opt.Copy.
-func (opt Option) Size() int {
-	return len(opt.Name) + opt.Parameters.bytes
-}
-
-// Copy copies all underlying []byte slices into p and returns new Option.
-// Note that p must be at least of opt.Size() length.
-func (opt Option) Copy(p []byte) Option {
-	n := copy(p, opt.Name)
-	opt.Name = p[:n]
-	opt.Parameters, p = opt.Parameters.Copy(p[n:])
-	return opt
-}
-
-func (opt Option) String() string {
-	return "{" + string(opt.Name) + " " + opt.Parameters.String() + "}"
-}
-
-func NewOption(name string, data map[string]string) Option {
-	p := Parameters{}
-	for k, v := range data {
-		p.Set([]byte(k), []byte(v))
-	}
-	return Option{
-		Name:       []byte(name),
-		Parameters: p,
-	}
-}
-
-type pair struct {
-	key, value []byte
-}
-
-func (p pair) copy(dst []byte) (pair, []byte) {
-	n := copy(dst, p.key)
-	p.key = dst[:n]
-	m := n + copy(dst[n:], p.value)
-	p.value = dst[n:m]
-
-	dst = dst[m:]
-
-	return p, dst
-}
-
-func (a Option) Equal(b Option) bool {
-	if bytes.Equal(a.Name, b.Name) {
-		return a.Parameters.Equal(b.Parameters)
-	}
-	return false
-}
-
-type pairs []pair
-
-func (p pairs) Len() int           { return len(p) }
-func (p pairs) Less(a, b int) bool { return bytes.Compare(p[a].key, p[b].key) == -1 }
-func (p pairs) Swap(a, b int)      { p[a], p[b] = p[b], p[a] }
-
-func (a Parameters) Equal(b Parameters) bool {
-	switch {
-	case a.dyn == nil && b.dyn == nil:
-	case a.dyn != nil && b.dyn != nil:
-	default:
-		return false
-	}
-
-	ad, bd := a.data(), b.data()
-	if len(ad) != len(bd) {
-		return false
-	}
-
-	sort.Sort(pairs(ad))
-	sort.Sort(pairs(bd))
-
-	for i := 0; i < len(ad); i++ {
-		av, bv := ad[i], bd[i]
-		if !bytes.Equal(av.key, bv.key) || !bytes.Equal(av.value, bv.value) {
-			return false
-		}
-	}
-	return true
-}
-
-type Parameters struct {
-	pos   int
-	bytes int
-	arr   [8]pair
-	dyn   []pair
-}
-
-func (p *Parameters) Size() int {
-	return p.bytes
-}
-
-func (p *Parameters) Copy(dst []byte) (Parameters, []byte) {
-	ret := Parameters{
-		pos:   p.pos,
-		bytes: p.bytes,
-	}
-	if p.dyn != nil {
-		ret.dyn = make([]pair, len(p.dyn))
-		for i, v := range p.dyn {
-			ret.dyn[i], dst = v.copy(dst)
-		}
-	} else {
-		for i, p := range p.arr {
-			ret.arr[i], dst = p.copy(dst)
-		}
-	}
-	return ret, dst
-}
-
-func (p *Parameters) Get(key string) (value []byte, ok bool) {
-	for _, v := range p.data() {
-		if string(v.key) == key {
-			return v.value, true
-		}
-	}
-	return nil, false
-}
-
-func (p *Parameters) Set(key, value []byte) {
-	p.bytes += len(key) + len(value)
-
-	if p.pos < len(p.arr) {
-		p.arr[p.pos] = pair{key, value}
-		p.pos++
-		return
-	}
-
-	if p.dyn == nil {
-		p.dyn = make([]pair, len(p.arr), len(p.arr)+1)
-		copy(p.dyn, p.arr[:])
-	}
-	p.dyn = append(p.dyn, pair{key, value})
-}
-
-func (p *Parameters) ForEach(cb func(k, v []byte) bool) {
-	for _, v := range p.data() {
-		if !cb(v.key, v.value) {
-			break
-		}
-	}
-}
-
-func (p *Parameters) String() (ret string) {
-	ret = "["
-	for i, v := range p.data() {
-		if i > 0 {
-			ret += " "
-		}
-		ret += string(v.key) + ":" + string(v.value)
-	}
-	return ret + "]"
-}
-
-func (p *Parameters) data() []pair {
-	if p.dyn != nil {
-		return p.dyn
-	}
-	return p.arr[:p.pos]
-}
-
-// ParseOptions parses header data and appends it to given slice of Option.
+// ParseOptions parses all header options and appends it to given slice of
+// Option.
 // It also returns flag of successful (wellformed input) parsing.
 func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 	var i int
@@ -232,8 +57,10 @@ func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 	})
 }
 
+// SelectFlag encodes way of options selection.
 type SelectFlag byte
 
+// String represetns flag as string.
 func (f SelectFlag) String() string {
 	var flags [2]string
 	var n int
@@ -249,7 +76,14 @@ func (f SelectFlag) String() string {
 }
 
 const (
+	// SelectCopy causes selector to copy selected option before appending it
+	// to resulting slice.
+	// If SelectCopy flag is not passed to selector, then appended options will
+	// contain sub-slices of the initial data.
 	SelectCopy SelectFlag = 1 << iota
+
+	// SelectUnique causes selector to append only not yet existing option to
+	// resulting slice. Unique is checked by comparing option names.
 	SelectUnique
 )
 
@@ -257,9 +91,10 @@ const (
 type OptionSelector struct {
 	// Check is a filter function that applied to every Option that possibly
 	// could be selected.
-	// If Check is nil all options are passed.
+	// If Check is nil all options will be selected.
 	Check func(Option) bool
 
+	// Flags contains flags for options selection.
 	Flags SelectFlag
 
 	// Alloc used to allocate slice of bytes when selector is configured with
@@ -323,6 +158,18 @@ func (s OptionSelector) Select(data []byte, options []Option) ([]Option, bool) {
 
 func defaultAlloc(n int) []byte { return make([]byte, n) }
 func defaultCheck(Option) bool  { return true }
+
+// Control represents operation that scanner should perform.
+type Control byte
+
+const (
+	// ControlContinue causes scanner to continue scan tokens.
+	ControlContinue Control = iota
+	// ControlBreak causes scanner to stop scan tokens.
+	ControlBreak
+	// ControlSkip causes scanner to skip current entity.
+	ControlSkip
+)
 
 // ScanOptions parses data in this form:
 //

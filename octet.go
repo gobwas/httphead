@@ -32,11 +32,20 @@ package httphead
 // | "{" | "}" | SP | HT
 type OctetType byte
 
-func (t OctetType) IsChar() bool      { return t&octetChar != 0 }
-func (t OctetType) IsControl() bool   { return t&octetControl != 0 }
+// IsChar reports whether octet is CHAR.
+func (t OctetType) IsChar() bool { return t&octetChar != 0 }
+
+// IsControl reports whether octet is CTL.
+func (t OctetType) IsControl() bool { return t&octetControl != 0 }
+
+// IsSeparator reports whether octet is separator.
 func (t OctetType) IsSeparator() bool { return t&octetSeparator != 0 }
-func (t OctetType) IsSpace() bool     { return t&octetSpace != 0 }
-func (t OctetType) IsToken() bool     { return t&octetToken != 0 }
+
+// IsSpace reports whether octet is space (SP or HT).
+func (t OctetType) IsSpace() bool { return t&octetSpace != 0 }
+
+// IsToken reports whether octet is token.
+func (t OctetType) IsToken() bool { return t&octetToken != 0 }
 
 const (
 	octetChar OctetType = 1 << iota
@@ -46,6 +55,7 @@ const (
 	octetToken
 )
 
+// OctetTypes is a table of octets.
 var OctetTypes [256]OctetType
 
 func init() {
