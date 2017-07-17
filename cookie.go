@@ -1,5 +1,9 @@
 package httphead
 
+import (
+	"bytes"
+)
+
 // ScanCookie scans cookie pairs from data using DefaultCookieScanner.Scan()
 // method.
 func ScanCookie(data []byte, it func(key, value []byte) bool) bool {
@@ -28,16 +32,16 @@ type CookieScanner struct {
 	// cookies implementations.
 	DisableValueValidation bool
 
+	// BreakOnPairError sets scanner to immediately return after first pair syntax
+	// validation error.
+	// If false, scanner will try to skip invalid pair bytes and go ahead.
+	BreakOnPairError bool
+
 	// Strict enables strict RFC6265 mode scanning. It affects name and value
 	// validation, as also some other rules.
 	// If false, it is intended to bring the same behavior as
 	// http.Request.Cookies().
 	Strict bool
-
-	// BreakOnError sets scanner to immediately return after first syntax
-	// error.
-	// If false, scanner will try to skip invalid bytes and go ahead.
-	BreakOnError bool
 }
 
 // Scan maps data to name and value pairs. Usually data represents value of the
@@ -49,9 +53,9 @@ func (c CookieScanner) Scan(data []byte, it func(name, value []byte) bool) bool 
 		statePair = iota
 		stateBefore
 	)
-	var (
-		state int
-	)
+
+	state := statePair
+
 	for lexer.Buffered() > 0 {
 		switch state {
 		case stateBefore:
@@ -65,6 +69,8 @@ func (c CookieScanner) Scan(data []byte, it func(name, value []byte) bool) bool 
 				return false
 			}
 
+			state = statePair
+
 			advance := 1
 			if b == ' ' {
 				advance++
@@ -73,39 +79,40 @@ func (c CookieScanner) Scan(data []byte, it func(name, value []byte) bool) bool 
 			}
 
 			lexer.Advance(advance)
-			state = statePair
 
 		case statePair:
-			var name, value []byte
-			if !lexer.FetchUntil('=') {
-				// Here we can not find '=' byte, but some bytes were present
-				// as name. So it is not just invalid name, but it is invalid syntax.
+			if !lexer.FetchUntil(';') {
 				return false
 			}
 
-			name = lexer.Bytes()
-			if !c.Strict {
-				trimLeft(name)
-			}
-
-			if !c.DisableNameValidation && !ValidCookieName(name) {
-				if !c.BreakOnError {
+			var value []byte
+			name := lexer.Bytes()
+			if i := bytes.IndexByte(name, '='); i != -1 {
+				value = name[i+1:]
+				name = name[:i]
+			} else if c.Strict {
+				if !c.BreakOnPairError {
 					goto nextPair
 				}
 				return false
 			}
 
-			lexer.Advance(1) // Skip the '=' byte.
-			lexer.FetchUntil(';')
+			if !c.Strict {
+				trimLeft(name)
+			}
+			if !c.DisableNameValidation && !ValidCookieName(name) {
+				if !c.BreakOnPairError {
+					goto nextPair
+				}
+				return false
+			}
 
-			value = lexer.Bytes()
 			if !c.Strict {
 				value = trimRight(value)
 			}
 			value = stripQuotes(value)
-
 			if !c.DisableValueValidation && !ValidCookieValue(value, c.Strict) {
-				if !c.BreakOnError {
+				if !c.BreakOnPairError {
 					goto nextPair
 				}
 				return false
@@ -115,11 +122,7 @@ func (c CookieScanner) Scan(data []byte, it func(name, value []byte) bool) bool 
 				return true
 			}
 
-			state = stateBefore
-			continue
-
 		nextPair:
-			lexer.FetchUntil(';')
 			state = stateBefore
 		}
 	}

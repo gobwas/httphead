@@ -92,7 +92,7 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "skip_invalid_key",
+		label: "skip invalid key",
 		in:    []byte(`foo@example.com=1; bar=baz`),
 		ok:    true,
 		exp: []cookieTuple{
@@ -100,15 +100,15 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "skip_invalid_value",
+		label: "skip invalid value",
 		in:    []byte(`foo="1; bar=baz`),
+		ok:    true,
 		exp: []cookieTuple{
 			{[]byte("bar"), []byte("baz")},
 		},
-		ok: true,
 	},
 	{
-		label: "trailing_semicolon",
+		label: "trailing semicolon",
 		in:    []byte(`foo=bar;`),
 		ok:    true,
 		exp: []cookieTuple{
@@ -116,8 +116,9 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "trailing_semicolon_strict",
+		label: "trailing semicolon strict",
 		in:    []byte(`foo=bar;`),
+		ok:    false,
 		exp: []cookieTuple{
 			{[]byte(`foo`), []byte(`bar`)},
 		},
@@ -126,17 +127,18 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "want_space_between",
+		label: "want space between",
 		in:    []byte(`foo=bar;bar=baz`),
+		ok:    true,
 		exp: []cookieTuple{
 			{[]byte(`foo`), []byte(`bar`)},
 			{[]byte(`bar`), []byte(`baz`)},
 		},
-		ok: true,
 	},
 	{
-		label: "want_space_between_strict",
+		label: "want space between strict",
 		in:    []byte(`foo=bar;bar=baz`),
+		ok:    false,
 		exp: []cookieTuple{
 			{[]byte(`foo`), []byte(`bar`)},
 		},
@@ -145,31 +147,33 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "value_single_dquote",
+		label: "value single dquote",
 		in:    []byte(`foo="bar`),
 		ok:    true,
 	},
 	{
-		label: "value_single_dquote",
+		label: "value single dquote",
 		in:    []byte(`foo=bar"`),
 		ok:    true,
 	},
 	{
-		label: "value_single_dquote",
+		label: "value single dquote",
 		in:    []byte(`foo="bar`),
+		ok:    false,
 		c: CookieScanner{
-			BreakOnError: true,
+			BreakOnPairError: true,
 		},
 	},
 	{
-		label: "value_single_dquote",
+		label: "value single dquote",
 		in:    []byte(`foo=bar"`),
+		ok:    false,
 		c: CookieScanner{
-			BreakOnError: true,
+			BreakOnPairError: true,
 		},
 	},
 	{
-		label: "value_whitespace",
+		label: "value whitespace",
 		in:    []byte(`foo=bar `),
 		ok:    true,
 		exp: []cookieTuple{
@@ -177,15 +181,16 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "value_whitespace_strict",
+		label: "value whitespace strict",
 		in:    []byte(`foo=bar `),
+		ok:    false,
 		c: CookieScanner{
-			Strict:       true,
-			BreakOnError: true,
+			Strict:           true,
+			BreakOnPairError: true,
 		},
 	},
 	{
-		label: "value_whitespace",
+		label: "value whitespace",
 		in:    []byte(`foo=b ar`),
 		ok:    true,
 		exp: []cookieTuple{
@@ -193,23 +198,25 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "value_whitespace_strict",
+		label: "value whitespace strict",
 		in:    []byte(`foo=b ar`),
+		ok:    false,
 		c: CookieScanner{
-			Strict:       true,
-			BreakOnError: true,
+			Strict:           true,
+			BreakOnPairError: true,
 		},
 	},
 	{
-		label: "value_whitespace_strict",
+		label: "value whitespace strict",
 		in:    []byte(`foo= bar`),
+		ok:    false,
 		c: CookieScanner{
-			Strict:       true,
-			BreakOnError: true,
+			Strict:           true,
+			BreakOnPairError: true,
 		},
 	},
 	{
-		label: "value_quoted_whitespace",
+		label: "value quoted whitespace",
 		in:    []byte(`foo="b ar"`),
 		ok:    true,
 		exp: []cookieTuple{
@@ -217,11 +224,55 @@ var cookieCases = []struct {
 		},
 	},
 	{
-		label: "value_quoted_whitespace_strict",
+		label: "value quoted whitespace strict",
 		in:    []byte(`foo="b ar"`),
 		c: CookieScanner{
-			Strict:       true,
-			BreakOnError: true,
+			Strict:           true,
+			BreakOnPairError: true,
+		},
+	},
+	{
+		label: "parse ok without values",
+		in:    []byte(`foo;bar;baz=10`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`foo`), []byte(``)},
+			{[]byte(`bar`), []byte(``)},
+			{[]byte(`baz`), []byte(`10`)},
+		},
+		c: CookieScanner{
+			Strict: false,
+		},
+	},
+	{
+		label: "strict parse ok without values",
+		in:    []byte(`foo; bar; baz=10`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`baz`), []byte(`10`)},
+		},
+		c: CookieScanner{
+			Strict: true,
+		},
+	},
+	{
+		label: "parse ok without values",
+		in:    []byte(`foo;`),
+		ok:    true,
+		exp: []cookieTuple{
+			{[]byte(`foo`), []byte(``)},
+		},
+		c: CookieScanner{
+			Strict: false,
+		},
+	},
+	{
+		label: "strict parse err without values",
+		in:    []byte(`foo;`),
+		ok:    false,
+		exp:   []cookieTuple{},
+		c: CookieScanner{
+			Strict: true,
 		},
 	},
 }
