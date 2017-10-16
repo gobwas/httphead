@@ -37,6 +37,14 @@ func ExampleParseOptions() {
 	// Output: [{foo [bar:1]} {baz []}] true
 }
 
+func ExampleParseOptionsLifetime() {
+	data := []byte(`foo;bar=1,baz`)
+	options, ok := ParseOptions(data, nil)
+	copy(data, []byte(`xxx;yyy=0,zzz`))
+	fmt.Println(options, ok)
+	// Output: [{xxx [yyy:0]} {zzz []}] true
+}
+
 var listCases = []struct {
 	label string
 	in    []byte

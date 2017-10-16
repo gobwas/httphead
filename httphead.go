@@ -39,8 +39,10 @@ func ScanTokens(data []byte, it func([]byte) bool) bool {
 }
 
 // ParseOptions parses all header options and appends it to given slice of
-// Option.
-// It also returns flag of successful (wellformed input) parsing.
+// Option. It returns flag of successful (wellformed input) parsing.
+//
+// Note that appended options are all consist of subslices of data. That is,
+// mutation of data will mutate appended options.
 func ParseOptions(data []byte, options []Option) ([]Option, bool) {
 	var i int
 	index := -1
