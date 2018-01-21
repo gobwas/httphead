@@ -81,7 +81,7 @@ func ParseResponseLine(line []byte) (r ResponseLine, ok bool) {
 	} else {
 		return r, false
 	}
-	if n, ok := asciiToInt(status); ok {
+	if n, ok := IntFromASCII(status); ok {
 		r.Status = n
 	} else {
 		return r, false
@@ -118,11 +118,11 @@ func ParseVersion(bts []byte) (major, minor int, ok bool) {
 	if dot == -1 {
 		return
 	}
-	major, ok = asciiToInt(bts[:dot])
+	major, ok = IntFromASCII(bts[:dot])
 	if !ok {
 		return
 	}
-	minor, ok = asciiToInt(bts[dot+1:])
+	minor, ok = IntFromASCII(bts[dot+1:])
 	if !ok {
 		return
 	}
@@ -192,8 +192,8 @@ func ParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 	return k, v, true
 }
 
-// asciiToInt converts bytes to int.
-func asciiToInt(bts []byte) (ret int, ok bool) {
+// IntFromASCII converts bytes met insidie HTTP heads to int.
+func IntFromASCII(bts []byte) (ret int, ok bool) {
 	// ASCII numbers all start with the high-order bits 0011.
 	// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
 	// bits and interpret them directly as an integer.
