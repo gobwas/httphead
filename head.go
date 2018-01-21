@@ -192,7 +192,8 @@ func ParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 	return k, v, true
 }
 
-// IntFromASCII converts bytes met insidie HTTP heads to int.
+// IntFromASCII converts ascii encoded decimal numeric value from HTTP entities
+// to an integer.
 func IntFromASCII(bts []byte) (ret int, ok bool) {
 	// ASCII numbers all start with the high-order bits 0011.
 	// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
