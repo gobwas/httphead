@@ -211,6 +211,26 @@ func IntFromASCII(bts []byte) (ret int, ok bool) {
 	return ret, true
 }
 
+const (
+	toLower = 'a' - 'A'      // for use with OR.
+	toUpper = ^byte(toLower) // for use with AND.
+)
+
+// CanonicalizeHeaderKey is like standard textproto/CanonicalMIMEHeaderKey,
+// except that it operates with slice of bytes and modifies it inplace without
+// copying.
+func CanonicalizeHeaderKey(k []byte) {
+	upper := true
+	for i, c := range k {
+		if upper && 'a' <= c && c <= 'z' {
+			k[i] &= toUpper
+		} else if !upper && 'A' <= c && c <= 'Z' {
+			k[i] |= toLower
+		}
+		upper = c == '-'
+	}
+}
+
 // pow for integers implementation.
 // See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3
 func pow(a, b int) int {
