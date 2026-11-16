@@ -195,18 +195,19 @@ func ParseHeaderLine(line []byte) (k, v []byte, ok bool) {
 // IntFromASCII converts ascii encoded decimal numeric value from HTTP entities
 // to an integer.
 func IntFromASCII(bts []byte) (ret int, ok bool) {
-	// ASCII numbers all start with the high-order bits 0011.
-	// If you see that, and the next bits are 0-9 (0000 - 1001) you can grab those
-	// bits and interpret them directly as an integer.
-	var n int
-	if n = len(bts); n < 1 {
+	if len(bts) == 0 {
 		return 0, false
 	}
-	for i := 0; i < n; i++ {
-		if bts[i]&0xf0 != 0x30 {
+	max := int(^uint(0) >> 1)
+	for _, c := range bts {
+		if c < '0' || c > '9' {
 			return 0, false
 		}
-		ret += int(bts[i]&0xf) * pow(10, n-i-1)
+		digit := int(c - '0')
+		if ret > (max-digit)/10 {
+			return 0, false
+		}
+		ret = ret*10 + digit
 	}
 	return ret, true
 }
@@ -229,20 +230,6 @@ func CanonicalizeHeaderKey(k []byte) {
 		}
 		upper = c == '-'
 	}
-}
-
-// pow for integers implementation.
-// See Donald Knuth, The Art of Computer Programming, Volume 2, Section 4.6.3
-func pow(a, b int) int {
-	p := 1
-	for b > 0 {
-		if b&1 != 0 {
-			p *= a
-		}
-		b >>= 1
-		a *= a
-	}
-	return p
 }
 
 func split3(p []byte, sep byte) (p1, p2, p3 []byte) {
